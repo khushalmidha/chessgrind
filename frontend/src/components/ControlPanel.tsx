@@ -1,5 +1,5 @@
 import { BookOpen, Brain, Lightbulb, Play, RotateCcw, Save, StepBack, Target } from 'lucide-react';
-import { IconButton } from './IconButton';
+import type { ReactNode } from 'react';
 import { MoveList } from './MoveList';
 import { difficultyLabels, modeLabels } from '../lib/fallback';
 import type { Difficulty, HintResponse, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
@@ -48,13 +48,20 @@ export function ControlPanel(props: Props) {
         <Target className="text-moss" />
       </div>
 
-      <div className="grid gap-3">
-        <label className="text-sm font-semibold" htmlFor="mode">Mode</label>
-        <select id="mode" value={props.mode} onChange={(event) => props.onMode(event.target.value as TrainingMode)} className="rounded-md border border-black/10 bg-white p-2 dark:border-white/10 dark:bg-white/10">
+      <div className="grid gap-2">
+        <div className="text-sm font-semibold">Mode</div>
+        <div className="grid grid-cols-2 gap-2">
           {modes.map((mode) => (
-            <option key={mode} value={mode}>{modeLabels[mode]}</option>
+            <button
+              key={mode}
+              type="button"
+              onClick={() => props.onMode(mode)}
+              className={`min-h-11 rounded-md border px-3 py-2 text-left text-sm font-semibold transition ${props.mode === mode ? 'border-moss bg-moss text-white' : 'border-black/10 bg-white hover:border-moss dark:border-white/10 dark:bg-white/10'}`}
+            >
+              {modeLabels[mode]}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Difficulty">
@@ -101,11 +108,11 @@ export function ControlPanel(props: Props) {
           <Play size={18} />
           Start
         </button>
-        <IconButton icon={<RotateCcw size={18} />} label="Reset" onClick={props.onReset} />
-        <IconButton icon={<Lightbulb size={18} />} label="Hint" onClick={props.onHint} />
-        <IconButton icon={<StepBack size={18} />} label="Undo" onClick={props.onUndo} />
-        <IconButton icon={<Brain size={18} />} label="Analyze" onClick={props.onAnalyze} />
-        <IconButton icon={<Save size={18} />} label="Save position" />
+        <Action icon={<RotateCcw size={17} />} label="Reset" onClick={props.onReset} />
+        <Action icon={<Lightbulb size={17} />} label="Hint" onClick={props.onHint} />
+        <Action icon={<StepBack size={17} />} label="Undo" onClick={props.onUndo} />
+        <Action icon={<Brain size={17} />} label="Analyze" onClick={props.onAnalyze} />
+        <Action icon={<Save size={17} />} label="Save" />
       </div>
 
       {props.hint && (
@@ -125,5 +132,18 @@ export function ControlPanel(props: Props) {
         {props.puzzles.length} prepared positions loaded. Engine defense and optimal-line replay use the Java UCI service when connected.
       </div>
     </aside>
+  );
+}
+
+function Action({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-md border border-black/10 bg-white/85 px-3 py-2 text-sm font-semibold transition hover:border-moss dark:border-white/10 dark:bg-white/10"
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

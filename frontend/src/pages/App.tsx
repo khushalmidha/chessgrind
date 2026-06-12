@@ -1,16 +1,17 @@
 import { Chess } from 'chess.js';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Moon, Sun } from 'lucide-react';
+import { ChevronLeft, Moon, Play, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AuthPanel } from '../components/AuthPanel';
 import { ControlPanel } from '../components/ControlPanel';
 import { IconButton } from '../components/IconButton';
+import { ProfileSummary } from '../components/ProfileSummary';
 import { StatStrip } from '../components/StatStrip';
 import { TrainingBoard } from '../components/TrainingBoard';
 import { api, currentUser, token } from '../lib/api';
 import { boardStateLabel } from '../lib/chess';
 import { fallbackPuzzles } from '../lib/fallback';
-import type { AuthResponse, Difficulty, HintResponse, MoveDto, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
+import type { AuthResponse, Difficulty, HintResponse, MoveDto, ProgressSummary, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
 
 export function App() {
   const [dark, setDark] = useState(true);
@@ -22,6 +23,8 @@ export function App() {
   const [customFen, setCustomFen] = useState('');
   const [session, setSession] = useState<SessionDto>();
   const [user, setUser] = useState<AuthResponse | undefined>(() => currentUser());
+  const [progress, setProgress] = useState<ProgressSummary>();
+  const [view, setView] = useState<'home' | 'practice'>('home');
   const [displaySeconds, setDisplaySeconds] = useState(timeLimit);
   const [localFen, setLocalFen] = useState(fallbackPuzzles[0].fen);
   const [hint, setHint] = useState<HintResponse>();
@@ -37,6 +40,14 @@ export function App() {
   useEffect(() => {
     api.puzzles().then(setPuzzles).catch(() => setPuzzles(fallbackPuzzles));
   }, []);
+
+  useEffect(() => {
+    if (!user || !token()) {
+      setProgress(undefined);
+      return;
+    }
+    api.progress().then(setProgress).catch(() => setProgress(undefined));
+  }, [user]);
 
   useEffect(() => {
     if (!session || session.status !== 'ACTIVE' || timerMode === 'NONE') return;
@@ -115,9 +126,12 @@ export function App() {
     setHint(undefined);
     if (session) {
       try {
-        const response = await api.move(session.id, uciMove);
+      const response = await api.move(session.id, uciMove);
         setSession({ ...response.session, remainingSeconds: displaySeconds });
         setNotice(response.message);
+        if (response.session.status !== 'ACTIVE') {
+          api.progress().then(setProgress).catch(() => undefined);
+        }
         return true;
       } catch (error) {
         setNotice(error instanceof Error ? error.message : 'Illegal move');
@@ -187,8 +201,62 @@ export function App() {
     setNotice('Board reset.');
   }
 
+  const topBar = (
+    <header className="sticky top-0 z-20 border-b border-black/10 bg-[#f4f6f0]/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-[#10130f]/95">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+        <button type="button" onClick={() => setView('home')} className="text-left">
+          <div className="text-xl font-black">ChessGrind</div>
+          <div className="text-xs text-black/50 dark:text-white/50">MateForge training</div>
+        </button>
+        <div className="flex items-center gap-2">
+          <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
+        </div>
+      </div>
+    </header>
+  );
+
+  if (view === 'home') {
+    return (
+      <main className="min-h-screen bg-[#f4f6f0] text-ink transition dark:bg-[#10130f] dark:text-white">
+        {topBar}
+        <div className="mx-auto grid max-w-7xl gap-5 px-4 py-6 lg:grid-cols-[1fr_380px]">
+          <section className="grid content-start gap-5">
+            <div className="rounded-md border border-black/10 bg-white/80 p-5 dark:border-white/10 dark:bg-white/10">
+              <div className="text-sm font-semibold uppercase text-moss">Checkmate practice</div>
+              <h1 className="mt-2 text-4xl font-black">Train technical mates against best defense.</h1>
+              <p className="mt-3 max-w-2xl text-black/60 dark:text-white/60">
+                Pick an endgame, beat the clock, and review the optimal mating line after each attempt.
+              </p>
+              <button
+                type="button"
+                onClick={() => setView('practice')}
+                className="mt-5 inline-flex items-center gap-2 rounded-md bg-moss px-5 py-3 font-bold text-white"
+              >
+                <Play size={20} />
+                Open Checkmate Practice
+              </button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {['King + rook basics', 'Queen net speed', 'Bishop + knight control'].map((title) => (
+                <button key={title} type="button" onClick={() => setView('practice')} className="rounded-md border border-black/10 bg-white/75 p-4 text-left transition hover:border-moss dark:border-white/10 dark:bg-white/10">
+                  <div className="font-bold">{title}</div>
+                  <div className="mt-2 text-sm text-black/55 dark:text-white/55">Start a focused mating drill.</div>
+                </button>
+              ))}
+            </div>
+          </section>
+          <aside className="grid content-start gap-4">
+            <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
+            <ProfileSummary user={user} progress={progress} />
+          </aside>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#f4f6f0] text-ink transition dark:bg-[#10130f] dark:text-white">
+      {topBar}
       <div className="mx-auto grid min-h-screen max-w-7xl gap-5 px-4 py-4 lg:grid-cols-[minmax(320px,1fr)_380px]">
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-black/10 bg-white/80 p-3 dark:border-white/10 dark:bg-white/10">
@@ -203,7 +271,10 @@ export function App() {
                   <button type="button" className="rounded-md border border-black/10 px-3 py-2 text-sm dark:border-white/10" onClick={() => setSolutionIndex(Math.min(solution.length - 1, solutionIndex + 1))}>Next</button>
                 </div>
               )}
-              <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
+              <button type="button" onClick={() => setView('home')} className="inline-flex items-center gap-2 rounded-md border border-black/10 px-3 py-2 text-sm font-semibold dark:border-white/10">
+                <ChevronLeft size={17} />
+                Dashboard
+              </button>
             </div>
           </div>
 
@@ -213,6 +284,12 @@ export function App() {
 
         <AnimatePresence mode="wait">
           <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}>
+            <div className="mb-4">
+              <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
+            </div>
+            <div className="mb-4">
+              <ProfileSummary user={user} progress={progress} />
+            </div>
             <ControlPanel
               puzzles={puzzles}
               mode={mode}
@@ -234,9 +311,6 @@ export function App() {
               onUndo={undo}
               onAnalyze={analyze}
             />
-            <div className="mt-4">
-              <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
-            </div>
           </motion.div>
         </AnimatePresence>
       </div>

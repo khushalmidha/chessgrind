@@ -1,8 +1,10 @@
 import type {
   AuthResponse,
   HintResponse,
+  LeaderboardEntry,
   MoveResponse,
   PuzzleDto,
+  ProgressSummary,
   SessionDto,
   SolutionResponse,
   StartSessionRequest,
@@ -65,4 +67,6 @@ export const api = {
   hint: (sessionId: string) => request<HintResponse>(`/api/sessions/${sessionId}/hint`, { method: 'POST' }),
   undo: (sessionId: string) => request<SessionDto>(`/api/sessions/${sessionId}/undo`, { method: 'POST' }),
   solution: (sessionId: string) => request<SolutionResponse>(`/api/sessions/${sessionId}/solution`),
+  progress: () => request<ProgressSummary>('/api/analytics/progress'),
+  leaderboard: () => request<LeaderboardEntry[]>('/api/leaderboard'),
 };

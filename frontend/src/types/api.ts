@@ -90,3 +90,22 @@ export interface AuthResponse {
   username: string;
   email: string;
 }
+
+export interface ProgressSummary {
+  completed: number;
+  activeSessions: number;
+  streakDays: number;
+  averageAccuracy: number;
+  rank: number;
+  totalRankedUsers: number;
+  bestCheckmateSeconds?: number;
+  recentMistakes: string[];
+}
+
+export interface LeaderboardEntry {
+  username: string;
+  mode: TrainingMode;
+  difficulty: Difficulty;
+  seconds: number;
+  accuracy: number;
+}
