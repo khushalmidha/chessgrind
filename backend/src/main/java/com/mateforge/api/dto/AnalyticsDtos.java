@@ -11,6 +11,9 @@ public final class AnalyticsDtos {
         int activeSessions,
         int streakDays,
         double averageAccuracy,
+        int rank,
+        int totalRankedUsers,
+        Integer bestCheckmateSeconds,
         List<String> recentMistakes
     ) {
     }

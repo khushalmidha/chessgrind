@@ -16,6 +16,7 @@ import com.mateforge.api.security.UserPrincipal;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +39,12 @@ public class AnalyticsService {
         AppUser user = user(principal);
         List<TrainingSession> history = sessions.findTop20ByUserOrderByStartedAtDesc(user);
         double average = history.stream().mapToDouble(TrainingSession::getAccuracy).average().orElse(0);
+        Integer bestTime = history.stream()
+            .filter(session -> session.getStatus() == SessionStatus.CHECKMATE && session.getEndedAt() != null)
+            .map(session -> (int) elapsedSeconds(session))
+            .min(Integer::compareTo)
+            .orElse(null);
+        Rank rank = rankFor(user);
         List<String> recentMistakes = history.stream()
             .flatMap(session -> moves.findBySessionOrderByPlyAsc(session).stream())
             .filter(move -> !move.isEngineMove() && !move.isOptimal())
@@ -48,6 +55,9 @@ public class AnalyticsService {
             sessions.findByUserAndStatus(user, SessionStatus.ACTIVE).size(),
             user.getStreakDays(),
             Math.round(average * 100.0) / 100.0,
+            rank.position(),
+            rank.totalUsers(),
+            bestTime,
             recentMistakes);
     }
 
@@ -81,6 +91,28 @@ public class AnalyticsService {
 
     private long elapsedSeconds(TrainingSession session) {
         return Duration.between(session.getStartedAt(), session.getEndedAt()).toSeconds();
+    }
+
+    private Rank rankFor(AppUser user) {
+        java.util.Map<UUID, Long> bestByUser = sessions.findAll().stream()
+            .filter(session -> session.getStatus() == SessionStatus.CHECKMATE && session.getEndedAt() != null && session.getUser() != null)
+            .collect(java.util.stream.Collectors.toMap(
+                session -> session.getUser().getId(),
+                this::elapsedSeconds,
+                Math::min
+            ));
+        List<java.util.Map.Entry<UUID, Long>> ranked = bestByUser.entrySet().stream()
+            .sorted(java.util.Map.Entry.comparingByValue())
+            .toList();
+        for (int i = 0; i < ranked.size(); i++) {
+            if (ranked.get(i).getKey().equals(user.getId())) {
+                return new Rank(i + 1, ranked.size());
+            }
+        }
+        return new Rank(0, ranked.size());
+    }
+
+    private record Rank(int position, int totalUsers) {
     }
 
     private AppUser user(UserPrincipal principal) {
