@@ -1,6 +1,7 @@
 package com.mateforge.api.controller;
 
 import com.mateforge.api.dto.AuthDtos.AuthResponse;
+import com.mateforge.api.dto.AuthDtos.GoogleLoginRequest;
 import com.mateforge.api.dto.AuthDtos.LoginRequest;
 import com.mateforge.api.dto.AuthDtos.RegisterRequest;
 import com.mateforge.api.service.AuthService;
@@ -27,5 +28,10 @@ public class AuthController {
     @PostMapping("/login")
     AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return auth.login(request);
+    }
+
+    @PostMapping("/google")
+    AuthResponse google(@Valid @RequestBody GoogleLoginRequest request) {
+        return auth.google(request);
     }
 }

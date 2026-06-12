@@ -31,3 +31,5 @@ app:
     line-depth: ${STOCKFISH_LINE_DEPTH:14}
   rate-limit:
     requests-per-minute: ${RATE_LIMIT_RPM:120}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}

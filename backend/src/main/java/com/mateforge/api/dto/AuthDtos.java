@@ -22,6 +22,11 @@ public final class AuthDtos {
     ) {
     }
 
+    public record GoogleLoginRequest(
+        @NotBlank String credential
+    ) {
+    }
+
     public record AuthResponse(
         String token,
         UUID userId,
