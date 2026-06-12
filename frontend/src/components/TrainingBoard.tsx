@@ -61,7 +61,7 @@ export function TrainingBoard({ fen, session, hint, solutionMove, onMove }: Prop
           animationDuration={180}
           onPieceDrop={(from, to) => {
             void onMove(uci(from, to));
-            return true;
+            return false;
           }}
           onSquareClick={async (square) => {
             if (!selected) {

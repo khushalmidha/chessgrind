@@ -2,17 +2,15 @@ import { Chess } from 'chess.js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Moon, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { AuthPanel } from '../components/AuthPanel';
 import { ControlPanel } from '../components/ControlPanel';
 import { IconButton } from '../components/IconButton';
 import { StatStrip } from '../components/StatStrip';
 import { TrainingBoard } from '../components/TrainingBoard';
-import { api, setToken, token } from '../lib/api';
+import { api, currentUser, token } from '../lib/api';
 import { boardStateLabel } from '../lib/chess';
 import { fallbackPuzzles } from '../lib/fallback';
-import type { Difficulty, HintResponse, MoveDto, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
-
-const guestEmail = 'trainer@mateforge.local';
-const guestPassword = 'mateforge-demo';
+import type { AuthResponse, Difficulty, HintResponse, MoveDto, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
 
 export function App() {
   const [dark, setDark] = useState(true);
@@ -23,6 +21,8 @@ export function App() {
   const [timeLimit, setTimeLimit] = useState(300);
   const [customFen, setCustomFen] = useState('');
   const [session, setSession] = useState<SessionDto>();
+  const [user, setUser] = useState<AuthResponse | undefined>(() => currentUser());
+  const [displaySeconds, setDisplaySeconds] = useState(timeLimit);
   const [localFen, setLocalFen] = useState(fallbackPuzzles[0].fen);
   const [hint, setHint] = useState<HintResponse>();
   const [solution, setSolution] = useState<MoveDto[]>([]);
@@ -38,6 +38,29 @@ export function App() {
     api.puzzles().then(setPuzzles).catch(() => setPuzzles(fallbackPuzzles));
   }, []);
 
+  useEffect(() => {
+    if (!session || session.status !== 'ACTIVE' || timerMode === 'NONE') return;
+    setDisplaySeconds(session.remainingSeconds);
+    const id = window.setInterval(() => {
+      setDisplaySeconds((seconds) => {
+        if (seconds <= 1) {
+          window.clearInterval(id);
+          setNotice('Time expired. Analyze the optimal mating line.');
+          setSession((current) => current ? { ...current, status: 'TIMEOUT', remainingSeconds: 0 } : current);
+          return 0;
+        }
+        return seconds - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [session?.id, session?.status, timerMode]);
+
+  useEffect(() => {
+    if (!session) {
+      setDisplaySeconds(timerMode === 'NONE' ? 0 : timeLimit);
+    }
+  }, [session, timeLimit, timerMode]);
+
   const selectedPuzzle = useMemo(() => {
     if (mode === 'RANDOM') {
       const filtered = puzzles.filter((puzzle) => puzzle.difficulty === difficulty);
@@ -52,24 +75,16 @@ export function App() {
   const state = boardStateLabel(session);
   const solutionMove = solution[solutionIndex];
 
-  async function ensureAuth() {
-    if (token()) return;
-    try {
-      const auth = await api.register('Trainer', guestEmail, guestPassword);
-      setToken(auth.token);
-    } catch {
-      const auth = await api.login(guestEmail, guestPassword);
-      setToken(auth.token);
-    }
-  }
-
   async function start() {
+    if (!token() || !user) {
+      setNotice('Sign in first, then start a training session.');
+      return;
+    }
     setBusy(true);
     setHint(undefined);
     setSolution([]);
     setSolutionIndex(0);
     try {
-      await ensureAuth();
       const currentPuzzle = mode === 'CUSTOM' ? undefined : selectedPuzzle;
       const started = await api.startSession({
         mode,
@@ -83,6 +98,7 @@ export function App() {
         customFen: mode === 'CUSTOM' ? customFen : currentPuzzle?.id.startsWith('local-') ? currentPuzzle.fen : undefined,
       });
       setSession(started);
+      setDisplaySeconds(started.remainingSeconds);
       setLocalFen(started.currentFen);
       setNotice('Session started. Make the attacking move; the king will defend.');
     } catch (error) {
@@ -100,7 +116,7 @@ export function App() {
     if (session) {
       try {
         const response = await api.move(session.id, uciMove);
-        setSession(response.session);
+        setSession({ ...response.session, remainingSeconds: displaySeconds });
         setNotice(response.message);
         return true;
       } catch (error) {
@@ -163,6 +179,7 @@ export function App() {
 
   function reset() {
     setSession(undefined);
+    setDisplaySeconds(timerMode === 'NONE' ? 0 : timeLimit);
     setHint(undefined);
     setSolution([]);
     setSolutionIndex(0);
@@ -190,7 +207,7 @@ export function App() {
             </div>
           </div>
 
-          <StatStrip session={session} />
+          <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
           <TrainingBoard fen={solutionMove?.fenAfter ?? fen} session={session} hint={hint} solutionMove={solutionMove} onMove={move} />
         </section>
 
@@ -202,7 +219,7 @@ export function App() {
               difficulty={difficulty}
               timerMode={timerMode}
               timeLimit={timeLimit}
-              session={session}
+              session={session ? { ...session, remainingSeconds: displaySeconds } : undefined}
               hint={hint}
               busy={busy}
               customFen={customFen}
@@ -217,6 +234,9 @@ export function App() {
               onUndo={undo}
               onAnalyze={analyze}
             />
+            <div className="mt-4">
+              <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
+            </div>
           </motion.div>
         </AnimatePresence>
       </div>

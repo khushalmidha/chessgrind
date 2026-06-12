@@ -10,6 +10,7 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const TOKEN_KEY = 'mateforge.token';
+const USER_KEY = 'mateforge.user';
 
 export function token() {
   return localStorage.getItem(TOKEN_KEY);
@@ -17,6 +18,21 @@ export function token() {
 
 export function setToken(value: string) {
   localStorage.setItem(TOKEN_KEY, value);
+}
+
+export function clearAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+export function currentUser(): AuthResponse | undefined {
+  const raw = localStorage.getItem(USER_KEY);
+  return raw ? JSON.parse(raw) as AuthResponse : undefined;
+}
+
+export function setAuth(value: AuthResponse) {
+  localStorage.setItem(TOKEN_KEY, value.token);
+  localStorage.setItem(USER_KEY, JSON.stringify(value));
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -39,6 +55,8 @@ export const api = {
     request<AuthResponse>('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, email, password }) }),
   login: (email: string, password: string) =>
     request<AuthResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  google: (credential: string) =>
+    request<AuthResponse>('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
   puzzles: () => request<PuzzleDto[]>('/api/puzzles'),
   startSession: (payload: StartSessionRequest) =>
     request<SessionDto>('/api/sessions', { method: 'POST', body: JSON.stringify(payload) }),
