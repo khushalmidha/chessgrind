@@ -85,6 +85,69 @@ Backend defaults are in `backend/src/main/resources/application.yml`.
 - `STOCKFISH_MOVE_TIME_MS`
 - `STOCKFISH_LINE_DEPTH`
 
+Frontend:
+
+- `VITE_API_BASE`
+
+## Deploy
+
+### Vercel Frontend
+
+Use the `frontend` folder as the app root.
+
+```txt
+Framework preset: Node
+Root directory: frontend
+Build command: npm run build
+Output directory: dist
+Start command: leave blank
+```
+
+Environment variable:
+
+```txt
+VITE_API_BASE=https://your-render-backend.onrender.com
+```
+
+### Render Backend
+
+Create a Docker web service from this repository.
+
+```txt
+Environment: Docker
+Root directory: .
+Dockerfile path: backend/Dockerfile
+```
+
+Environment variables:
+
+```txt
+DATABASE_URL=jdbc:postgresql://HOST:PORT/DATABASE
+DATABASE_USERNAME=DATABASE_USER
+DATABASE_PASSWORD=DATABASE_PASSWORD
+JWT_SECRET=long-random-secret-at-least-64-characters
+CORS_ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+STOCKFISH_PATH=/usr/games/stockfish
+STOCKFISH_MOVE_TIME_MS=250
+STOCKFISH_LINE_DEPTH=14
+RATE_LIMIT_RPM=120
+PORT=8080
+```
+
+When using Render PostgreSQL, convert the database connection to JDBC format:
+
+```txt
+postgresql://user:password@host:5432/dbname
+```
+
+becomes:
+
+```txt
+jdbc:postgresql://host:5432/dbname
+```
+
+Then put `user` and `password` into `SPRING_DATASOURCE_USERNAME` and `SPRING_DATASOURCE_PASSWORD`.
+
 ## Notes
 
 The frontend has local fallback positions so the board can be explored before the backend is running. Engine defense, persisted sessions, hints, accuracy, and optimal solution replay require the Java API and Stockfish.
