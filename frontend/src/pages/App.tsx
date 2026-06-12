@@ -94,6 +94,7 @@ export function App() {
   const fen = session?.currentFen ?? (mode === 'CUSTOM' && customFen ? customFen : localFen);
   const state = boardStateLabel(session);
   const solutionMove = solution[solutionIndex];
+  const solutionStep = solution.length > 0 ? `${solutionIndex + 1} / ${solution.length}` : '';
 
   async function start() {
     if (!token() || !user) {
@@ -277,8 +278,9 @@ export function App() {
             <div className="flex items-center gap-2">
               {solution.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <button type="button" className="rounded-md border border-black/10 px-3 py-2 text-sm dark:border-white/10" onClick={() => setSolutionIndex(Math.max(0, solutionIndex - 1))}>Prev</button>
-                  <button type="button" className="rounded-md border border-black/10 px-3 py-2 text-sm dark:border-white/10" onClick={() => setSolutionIndex(Math.min(solution.length - 1, solutionIndex + 1))}>Next</button>
+                  <span className="text-sm font-bold text-ember">{solutionStep}</span>
+                  <button type="button" className="rounded-md border border-black/10 px-3 py-2 text-sm font-semibold dark:border-white/10" onClick={() => setSolutionIndex(Math.max(0, solutionIndex - 1))}>Prev</button>
+                  <button type="button" className="rounded-md border border-black/10 px-3 py-2 text-sm font-semibold dark:border-white/10" onClick={() => setSolutionIndex(Math.min(solution.length - 1, solutionIndex + 1))}>Next</button>
                 </div>
               )}
               <button type="button" onClick={() => setView('home')} className="inline-flex items-center gap-2 rounded-md border border-black/10 px-3 py-2 text-sm font-semibold dark:border-white/10">
@@ -289,6 +291,23 @@ export function App() {
           </div>
 
           <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
+          {solutionMove && (
+            <section className="rounded-md border border-ember/40 bg-ember/10 p-4 shadow-sm">
+              <div className="text-xs font-black uppercase tracking-wide text-ember">Best Move</div>
+              <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <div className="text-4xl font-black text-ink dark:text-white">{solutionMove.san || solutionMove.uci}</div>
+                  <div className="mt-1 text-sm font-semibold text-black/60 dark:text-white/65">
+                    Move {solutionStep}: {solutionMove.uci.slice(0, 2)} to {solutionMove.uci.slice(2, 4)}
+                  </div>
+                </div>
+                <div className="rounded-md bg-white/75 px-3 py-2 text-sm font-bold text-ember dark:bg-black/25">
+                  Follow the arrow on the board
+                </div>
+              </div>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-black/65 dark:text-white/70">{solutionMove.reason}</p>
+            </section>
+          )}
           <TrainingBoard fen={solutionMove?.fenAfter ?? fen} session={session} hint={hint} solutionMove={solutionMove} onMove={move} />
         </section>
 
