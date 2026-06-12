@@ -8,6 +8,7 @@ import type {
   SessionDto,
   SolutionResponse,
   StartSessionRequest,
+  Tournament,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -69,4 +70,9 @@ export const api = {
   solution: (sessionId: string) => request<SolutionResponse>(`/api/sessions/${sessionId}/solution`),
   progress: () => request<ProgressSummary>('/api/analytics/progress'),
   leaderboard: () => request<LeaderboardEntry[]>('/api/leaderboard'),
+  createTournament: (payload: { name: string; mode: string; difficulty: string; timeLimitSeconds: number; maxPlayers: number }) =>
+    request<Tournament>('/api/tournaments', { method: 'POST', body: JSON.stringify(payload) }),
+  myTournaments: () => request<Tournament[]>('/api/tournaments/mine'),
+  tournament: (joinCode: string) => request<Tournament>(`/api/tournaments/${joinCode}`),
+  joinTournament: (joinCode: string) => request<Tournament>(`/api/tournaments/${joinCode}/join`, { method: 'POST' }),
 };

@@ -8,6 +8,7 @@ import { IconButton } from '../components/IconButton';
 import { ProfileSummary } from '../components/ProfileSummary';
 import { StatStrip } from '../components/StatStrip';
 import { TrainingBoard } from '../components/TrainingBoard';
+import { TournamentPanel } from '../components/TournamentPanel';
 import { api, currentUser, token } from '../lib/api';
 import { boardStateLabel } from '../lib/chess';
 import { fallbackPuzzles } from '../lib/fallback';
@@ -39,6 +40,14 @@ export function App() {
 
   useEffect(() => {
     api.puzzles().then(setPuzzles).catch(() => setPuzzles(fallbackPuzzles));
+  }, []);
+
+  useEffect(() => {
+    const match = window.location.pathname.match(/^\/tournament\/([A-Z0-9]+)/i);
+    if (match) {
+      setView('home');
+      setNotice(`Tournament invite detected: ${match[1].toUpperCase()}. Sign in and join from the tournament panel.`);
+    }
   }, []);
 
   useEffect(() => {
@@ -248,6 +257,7 @@ export function App() {
           <aside className="grid content-start gap-4">
             <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
             <ProfileSummary user={user} progress={progress} />
+            <TournamentPanel signedIn={Boolean(user && token())} onNotice={setNotice} />
           </aside>
         </div>
       </main>
@@ -289,6 +299,9 @@ export function App() {
             </div>
             <div className="mb-4">
               <ProfileSummary user={user} progress={progress} />
+            </div>
+            <div className="mb-4">
+              <TournamentPanel signedIn={Boolean(user && token())} onNotice={setNotice} />
             </div>
             <ControlPanel
               puzzles={puzzles}

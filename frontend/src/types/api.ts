@@ -109,3 +109,26 @@ export interface LeaderboardEntry {
   seconds: number;
   accuracy: number;
 }
+
+export interface TournamentParticipant {
+  userId: string;
+  username: string;
+  score: number;
+  bestTimeSeconds: number;
+  bestAccuracy: number;
+}
+
+export interface Tournament {
+  id: string;
+  name: string;
+  joinCode: string;
+  shareUrl: string;
+  status: 'DRAFT' | 'OPEN' | 'ACTIVE' | 'FINISHED';
+  mode: TrainingMode;
+  difficulty: Difficulty;
+  timeLimitSeconds: number;
+  maxPlayers: number;
+  playerCount: number;
+  createdAt: string;
+  participants: TournamentParticipant[];
+}
