@@ -25,7 +25,7 @@ export function CoachNote({ review }: { review?: MoveResponse }) {
       {review.bestMove && (
         <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm font-bold">
           <Target size={16} />
-          Best move: {review.bestMove}
+          Best move: {review.bestMoveText ?? review.bestMove}
         </div>
       )}
     </section>

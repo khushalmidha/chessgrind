@@ -84,6 +84,8 @@ public final class TrainingDtos {
         boolean stalemate,
         String moveQuality,
         String bestMove,
+        String bestMoveText,
+        String userMoveText,
         String coachNote,
         String message
     ) {

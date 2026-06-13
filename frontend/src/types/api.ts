@@ -71,6 +71,8 @@ export interface MoveResponse {
   stalemate: boolean;
   moveQuality?: 'BEST' | 'CHECKMATE' | 'INACCURACY' | 'MISTAKE' | 'BLUNDER';
   bestMove?: string;
+  bestMoveText?: string;
+  userMoveText?: string;
   coachNote?: string;
   message: string;
 }

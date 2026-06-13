@@ -1,6 +1,8 @@
 package com.mateforge.api.service;
 
 import com.github.bhlangonijr.chesslib.Board;
+import com.github.bhlangonijr.chesslib.Piece;
+import com.github.bhlangonijr.chesslib.Square;
 import com.github.bhlangonijr.chesslib.move.Move;
 import com.mateforge.api.dto.TrainingDtos.HintResponse;
 import com.mateforge.api.dto.TrainingDtos.MoveResponse;
@@ -87,7 +89,8 @@ public class TrainingService {
     @Transactional
     public MoveResponse play(UUID sessionId, String uci, UserPrincipal principal) {
         TrainingSession session = ownedActiveSession(sessionId, principal);
-        Board before = rules.board(session.getCurrentFen());
+        String beforeFen = session.getCurrentFen();
+        Board before = rules.board(beforeFen);
         Move userMove = rules.requireLegal(before, uci);
         String san = rules.simpleSan(userMove, before);
         before.doMove(userMove);
@@ -124,7 +127,8 @@ public class TrainingService {
         Board finalBoard = rules.board(session.getCurrentFen());
         return new MoveResponse(mapper.session(session), uci, engineMove, rules.describeState(finalBoard),
             finalBoard.isKingAttacked(), finalBoard.isMated(), finalBoard.isStaleMate(),
-            moveQuality(optimalMove, before), optimal.uci(), coachNote(optimalMove, optimal.uci(), before), message(session));
+            moveQuality(optimalMove, before), optimal.uci(), moveText(beforeFen, optimal.uci()), moveText(beforeFen, uci),
+            coachNote(optimalMove, moveText(beforeFen, optimal.uci()), before), message(session));
     }
 
     @Transactional
@@ -273,6 +277,28 @@ public class TrainingService {
             return "Best move. You kept the mating net intact and gave the defender no easy route back to the center.";
         }
         return "There was a more forcing continuation: " + bestMove + ". Try to restrict the king first, then bring the attacking king closer.";
+    }
+
+    private String moveText(String fen, String uci) {
+        if (uci == null || uci.length() < 4) {
+            return uci == null ? "" : uci;
+        }
+        Board board = rules.board(fen);
+        Square from = Square.fromValue(uci.substring(0, 2).toUpperCase());
+        Piece piece = board.getPiece(from);
+        return pieceName(piece) + " to " + uci.substring(2, 4);
+    }
+
+    private String pieceName(Piece piece) {
+        return switch (piece) {
+            case WHITE_KING, BLACK_KING -> "King";
+            case WHITE_QUEEN, BLACK_QUEEN -> "Queen";
+            case WHITE_ROOK, BLACK_ROOK -> "Rook";
+            case WHITE_BISHOP, BLACK_BISHOP -> "Bishop";
+            case WHITE_KNIGHT, BLACK_KNIGHT -> "Knight";
+            case WHITE_PAWN, BLACK_PAWN -> "Pawn";
+            default -> "Move";
+        };
     }
 
     private String message(TrainingSession session) {
