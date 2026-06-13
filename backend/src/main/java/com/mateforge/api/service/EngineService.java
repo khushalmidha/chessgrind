@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +23,12 @@ public class EngineService {
     private final int moveTimeMs;
     private final int lineDepth;
     private final ChessRulesService rules;
+    private final Object engineLock = new Object();
+    private final Map<String, EngineMove> bestMoveCache = new ConcurrentHashMap<>();
+    private final Map<String, List<EngineMove>> solutionCache = new ConcurrentHashMap<>();
+    private Process process;
+    private BufferedWriter writer;
+    private BufferedReader reader;
 
     public EngineService(
         @Value("${app.engine.stockfish-path}") String stockfishPath,
@@ -35,6 +43,10 @@ public class EngineService {
     }
 
     public EngineMove bestMove(String fen) {
+        return bestMoveCache.computeIfAbsent(fen, this::calculateBestMove);
+    }
+
+    private EngineMove calculateBestMove(String fen) {
         String best = askStockfish(fen, "go movetime " + moveTimeMs);
         if (best == null || best.isBlank() || "(none)".equals(best)) {
             Board board = rules.board(fen);
@@ -45,6 +57,11 @@ public class EngineService {
     }
 
     public List<EngineMove> solutionLine(String fen, int maxPlies) {
+        String cacheKey = fen + "|" + maxPlies;
+        return solutionCache.computeIfAbsent(cacheKey, ignored -> calculateSolutionLine(fen, maxPlies));
+    }
+
+    private List<EngineMove> calculateSolutionLine(String fen, int maxPlies) {
         List<EngineMove> line = new ArrayList<>();
         String currentFen = fen;
         for (int ply = 0; ply < maxPlies; ply++) {
@@ -68,34 +85,59 @@ public class EngineService {
     }
 
     private String askStockfish(String fen, String goCommand) {
-        Process process = null;
+        synchronized (engineLock) {
+            return askPersistentStockfish(fen, goCommand);
+        }
+    }
+
+    private String askPersistentStockfish(String fen, String goCommand) {
         try {
-            process = new ProcessBuilder(stockfishPath).redirectErrorStream(true).start();
-            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                send(writer, "uci");
-                waitFor(reader, "uciok", Duration.ofSeconds(2));
-                send(writer, "isready");
-                waitFor(reader, "readyok", Duration.ofSeconds(2));
-                send(writer, "position fen " + fen);
-                send(writer, goCommand);
-                String line;
-                long deadline = System.currentTimeMillis() + Math.max(1000, moveTimeMs + 1000);
-                while (System.currentTimeMillis() < deadline && (line = reader.readLine()) != null) {
-                    if (line.startsWith("bestmove ")) {
-                        send(writer, "quit");
-                        return line.split("\\s+")[1];
-                    }
+            ensureEngineReady();
+            send(writer, "ucinewgame");
+            send(writer, "position fen " + fen);
+            send(writer, goCommand);
+            String line;
+            long deadline = System.currentTimeMillis() + Math.max(1000, moveTimeMs + 1500);
+            while (System.currentTimeMillis() < deadline && (line = reader.readLine()) != null) {
+                if (line.startsWith("bestmove ")) {
+                    return line.split("\\s+")[1];
                 }
             }
         } catch (IOException ignored) {
+            restartEngine();
             return null;
-        } finally {
-            if (process != null) {
-                process.destroyForcibly();
-            }
         }
         return null;
+    }
+
+    private void ensureEngineReady() throws IOException {
+        if (process != null && process.isAlive()) {
+            send(writer, "isready");
+            waitFor(reader, "readyok", Duration.ofSeconds(2));
+            return;
+        }
+        process = new ProcessBuilder(stockfishPath).redirectErrorStream(true).start();
+        writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
+        reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        send(writer, "uci");
+        waitFor(reader, "uciok", Duration.ofSeconds(3));
+        send(writer, "isready");
+        waitFor(reader, "readyok", Duration.ofSeconds(3));
+    }
+
+    private void restartEngine() {
+        try {
+            if (writer != null) {
+                send(writer, "quit");
+            }
+        } catch (IOException ignored) {
+        }
+        if (process != null) {
+            process.destroyForcibly();
+        }
+        process = null;
+        writer = null;
+        reader = null;
     }
 
     private void send(BufferedWriter writer, String command) throws IOException {
