@@ -142,10 +142,17 @@ export function App() {
     if (session) {
       try {
         const response = await api.move(session.id, uciMove);
-        setSession({ ...response.session, remainingSeconds: displaySeconds });
+        const terminalStatus = response.checkmate
+          ? 'CHECKMATE'
+          : response.stalemate
+            ? 'STALEMATE'
+            : response.gameState === 'draw'
+              ? 'DRAW'
+              : response.session.status;
+        setSession({ ...response.session, status: terminalStatus, remainingSeconds: displaySeconds });
         setCoachReview(response);
         setNotice(response.message);
-        if (response.session.status !== 'ACTIVE') {
+        if (terminalStatus !== 'ACTIVE') {
           api.progress().then(setProgress).catch(() => undefined);
         }
         return true;

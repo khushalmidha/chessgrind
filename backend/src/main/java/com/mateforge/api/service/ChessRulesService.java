@@ -63,10 +63,10 @@ public class ChessRulesService {
     }
 
     public String describeState(Board board) {
-        if (board.isMated()) {
+        if (isCheckmate(board)) {
             return "checkmate";
         }
-        if (board.isStaleMate()) {
+        if (isStalemate(board)) {
             return "stalemate";
         }
         if (board.isDraw()) {
@@ -78,11 +78,19 @@ public class ChessRulesService {
         return "active";
     }
 
+    public boolean isCheckmate(Board board) {
+        return board.isKingAttacked() && legalMoves(board).isEmpty();
+    }
+
+    public boolean isStalemate(Board board) {
+        return !board.isKingAttacked() && legalMoves(board).isEmpty();
+    }
+
     public String simpleSan(Move move, Board before) {
         String suffix = "";
         Board after = board(before.getFen());
         after.doMove(move);
-        if (after.isMated()) {
+        if (isCheckmate(after)) {
             suffix = "#";
         } else if (after.isKingAttacked()) {
             suffix = "+";
