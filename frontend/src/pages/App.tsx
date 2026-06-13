@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, Moon, Play, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AuthPanel } from '../components/AuthPanel';
+import { CoachNote } from '../components/CoachNote';
 import { ControlPanel } from '../components/ControlPanel';
 import { IconButton } from '../components/IconButton';
 import { ProfileSummary } from '../components/ProfileSummary';
@@ -12,7 +13,7 @@ import { TournamentPanel } from '../components/TournamentPanel';
 import { api, currentUser, token } from '../lib/api';
 import { boardStateLabel } from '../lib/chess';
 import { fallbackPuzzles } from '../lib/fallback';
-import type { AuthResponse, Difficulty, HintResponse, MoveDto, ProgressSummary, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
+import type { AuthResponse, Difficulty, HintResponse, MoveDto, MoveResponse, ProgressSummary, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
 
 export function App() {
   const [dark, setDark] = useState(true);
@@ -30,6 +31,7 @@ export function App() {
   const [localFen, setLocalFen] = useState(fallbackPuzzles[0].fen);
   const [hint, setHint] = useState<HintResponse>();
   const [solution, setSolution] = useState<MoveDto[]>([]);
+  const [coachReview, setCoachReview] = useState<MoveResponse>();
   const [solutionIndex, setSolutionIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Ready for a clean mate.');
@@ -104,6 +106,7 @@ export function App() {
     setBusy(true);
     setHint(undefined);
     setSolution([]);
+    setCoachReview(undefined);
     setSolutionIndex(0);
     try {
       const currentPuzzle = mode === 'CUSTOM' ? undefined : selectedPuzzle;
@@ -136,8 +139,9 @@ export function App() {
     setHint(undefined);
     if (session) {
       try {
-      const response = await api.move(session.id, uciMove);
+        const response = await api.move(session.id, uciMove);
         setSession({ ...response.session, remainingSeconds: displaySeconds });
+        setCoachReview(response);
         setNotice(response.message);
         if (response.session.status !== 'ACTIVE') {
           api.progress().then(setProgress).catch(() => undefined);
@@ -206,6 +210,7 @@ export function App() {
     setDisplaySeconds(timerMode === 'NONE' ? 0 : timeLimit);
     setHint(undefined);
     setSolution([]);
+    setCoachReview(undefined);
     setSolutionIndex(0);
     setLocalFen(mode === 'CUSTOM' && customFen ? customFen : selectedPuzzle.fen);
     setNotice('Board reset.');
@@ -291,6 +296,7 @@ export function App() {
           </div>
 
           <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
+          <CoachNote review={coachReview} />
           {solutionMove && (
             <section className="rounded-md border border-ember/40 bg-ember/10 p-4 shadow-sm">
               <div className="text-xs font-black uppercase tracking-wide text-ember">Best Move</div>

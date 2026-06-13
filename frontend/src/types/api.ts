@@ -69,6 +69,9 @@ export interface MoveResponse {
   check: boolean;
   checkmate: boolean;
   stalemate: boolean;
+  moveQuality?: 'BEST' | 'CHECKMATE' | 'INACCURACY' | 'MISTAKE' | 'BLUNDER';
+  bestMove?: string;
+  coachNote?: string;
   message: string;
 }
 
