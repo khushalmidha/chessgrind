@@ -8,6 +8,7 @@ import { CoachNote } from '../components/CoachNote';
 import { ControlPanel } from '../components/ControlPanel';
 import { IconButton } from '../components/IconButton';
 import { ProfileSummary } from '../components/ProfileSummary';
+import { SessionFinishedBanner } from '../components/SessionFinishedBanner';
 import { StatStrip } from '../components/StatStrip';
 import { TrainingBoard } from '../components/TrainingBoard';
 import { TournamentPanel } from '../components/TournamentPanel';
@@ -206,6 +207,36 @@ export function App() {
     }
   }
 
+  async function practiceAgain() {
+    if (!session) return;
+    setCustomFen(session.startFen);
+    setMode('CUSTOM');
+    setSolution([]);
+    setCoachReview(undefined);
+    setSolutionIndex(0);
+    setBusy(true);
+    try {
+      const restarted = await api.startSession({
+        mode: 'CUSTOM',
+        difficulty: session.difficulty,
+        timerMode: session.timerMode,
+        timeLimitSeconds: timeLimit,
+        incrementSeconds: 0,
+        hintsEnabled: true,
+        takebacksEnabled: true,
+        customFen: session.startFen,
+      });
+      setSession(restarted);
+      setDisplaySeconds(restarted.remainingSeconds);
+      setLocalFen(restarted.currentFen);
+      setNotice('Practice restarted from the same position.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not restart practice');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function reset() {
     setSession(undefined);
     setDisplaySeconds(timerMode === 'NONE' ? 0 : timeLimit);
@@ -297,6 +328,7 @@ export function App() {
           </div>
 
           <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
+          <SessionFinishedBanner session={session} onPracticeAgain={practiceAgain} onAnalyze={analyze} />
           <AnalysisReview solution={solution} session={session} index={solutionIndex} onIndex={setSolutionIndex} />
           <CoachNote review={coachReview} />
           {solutionMove && (
