@@ -82,6 +82,9 @@ public final class TrainingDtos {
         boolean check,
         boolean checkmate,
         boolean stalemate,
+        String moveQuality,
+        String bestMove,
+        String coachNote,
         String message
     ) {
     }

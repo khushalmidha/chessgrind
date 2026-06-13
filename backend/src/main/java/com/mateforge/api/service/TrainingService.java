@@ -123,7 +123,8 @@ public class TrainingService {
         publish(session);
         Board finalBoard = rules.board(session.getCurrentFen());
         return new MoveResponse(mapper.session(session), uci, engineMove, rules.describeState(finalBoard),
-            finalBoard.isKingAttacked(), finalBoard.isMated(), finalBoard.isStaleMate(), message(session));
+            finalBoard.isKingAttacked(), finalBoard.isMated(), finalBoard.isStaleMate(),
+            moveQuality(optimalMove, before), optimal.uci(), coachNote(optimalMove, optimal.uci(), before), message(session));
     }
 
     @Transactional
@@ -249,6 +250,29 @@ public class TrainingService {
             return "Best technique: this move preserves the mating net against the strongest defense.";
         }
         return "This still may be playable, but the engine found a more forcing move from the same position.";
+    }
+
+    private String moveQuality(boolean optimal, Board boardAfter) {
+        if (boardAfter.isMated()) {
+            return "CHECKMATE";
+        }
+        if (optimal) {
+            return "BEST";
+        }
+        if (boardAfter.isKingAttacked()) {
+            return "INACCURACY";
+        }
+        return "MISTAKE";
+    }
+
+    private String coachNote(boolean optimal, String bestMove, Board boardAfter) {
+        if (boardAfter.isMated()) {
+            return "Excellent finish. The defending king has no legal escape, block, or capture.";
+        }
+        if (optimal) {
+            return "Best move. You kept the mating net intact and gave the defender no easy route back to the center.";
+        }
+        return "There was a more forcing continuation: " + bestMove + ". Try to restrict the king first, then bring the attacking king closer.";
     }
 
     private String message(TrainingSession session) {
