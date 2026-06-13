@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, Moon, Play, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AuthPanel } from '../components/AuthPanel';
+import { AnalysisReview } from '../components/AnalysisReview';
 import { CoachNote } from '../components/CoachNote';
 import { ControlPanel } from '../components/ControlPanel';
 import { IconButton } from '../components/IconButton';
@@ -296,6 +297,7 @@ export function App() {
           </div>
 
           <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
+          <AnalysisReview solution={solution} session={session} index={solutionIndex} onIndex={setSolutionIndex} />
           <CoachNote review={coachReview} />
           {solutionMove && (
             <section className="rounded-md border border-ember/40 bg-ember/10 p-4 shadow-sm">

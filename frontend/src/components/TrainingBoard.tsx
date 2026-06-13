@@ -17,7 +17,11 @@ export function TrainingBoard({ fen, session, hint, solutionMove, onMove }: Prop
   const [selected, setSelected] = useState<string>();
   const legalSquares = useMemo(() => (selected ? legalDestinations(fen, selected) : []), [fen, selected]);
   const lastMove = session?.moves[session.moves.length - 1]?.uci;
-  const arrows = [...arrowFromMove(lastMove), ...arrowFromMove(hint?.bestMove), ...arrowFromMove(solutionMove)] as never;
+  const arrows = [
+    arrowFromMove(lastMove, '#f6c344'),
+    arrowFromMove(hint?.bestMove, '#f6a04d'),
+    arrowFromMove(solutionMove, '#81b64c'),
+  ].filter(Boolean) as never;
 
   const customSquareStyles = useMemo(() => {
     const styles: Record<string, CSSProperties> = {};

@@ -21,8 +21,8 @@ export function boardStateLabel(session?: SessionDto) {
   return chess.inCheck() ? 'Check' : 'Training';
 }
 
-export function arrowFromMove(move?: string | MoveDto): [string, string][] {
+export function arrowFromMove(move?: string | MoveDto, color?: string): [string, string] | [string, string, string] | undefined {
   const u = typeof move === 'string' ? move : move?.uci;
-  if (!u || u.length < 4) return [];
-  return [[u.slice(0, 2), u.slice(2, 4)]];
+  if (!u || u.length < 4) return undefined;
+  return color ? [u.slice(0, 2), u.slice(2, 4), color] : [u.slice(0, 2), u.slice(2, 4)];
 }
