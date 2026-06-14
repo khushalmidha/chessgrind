@@ -65,6 +65,9 @@ public class TrainingSession {
     private int remainingSeconds;
 
     @Column(nullable = false)
+    private boolean userTurn;
+
+    @Column(nullable = false)
     private boolean hintsEnabled;
 
     @Column(nullable = false)
