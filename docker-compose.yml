@@ -13,5 +13,13 @@ services:
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
 
+  redis:
+    image: redis:7-alpine
+    container_name: mateforge-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+
 volumes:
   mateforge-data:

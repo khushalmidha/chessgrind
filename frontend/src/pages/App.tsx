@@ -36,6 +36,8 @@ export function App() {
   const [coachReview, setCoachReview] = useState<MoveResponse>();
   const [solutionIndex, setSolutionIndex] = useState(0);
   const [busy, setBusy] = useState(false);
+  // engineThinking pauses the user clock while Stockfish calculates its reply
+  const [engineThinking, setEngineThinking] = useState(false);
   const [notice, setNotice] = useState('Ready for a clean mate.');
 
   useEffect(() => {
@@ -62,9 +64,13 @@ export function App() {
     api.progress().then(setProgress).catch(() => setProgress(undefined));
   }, [user]);
 
+  // The user clock only ticks when:
+  //  - there is an ACTIVE session
+  //  - a timer mode other than NONE is selected
+  //  - it is the user's turn (engine is NOT thinking)
+  // This guarantees Stockfish thinking time never reduces the player's clock.
   useEffect(() => {
-    if (!session || session.status !== 'ACTIVE' || timerMode === 'NONE') return;
-    setDisplaySeconds(session.remainingSeconds);
+    if (!session || session.status !== 'ACTIVE' || timerMode === 'NONE' || engineThinking) return;
     const id = window.setInterval(() => {
       setDisplaySeconds((seconds) => {
         if (seconds <= 1) {
@@ -77,7 +83,7 @@ export function App() {
       });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [session?.id, session?.status, timerMode]);
+  }, [session?.id, session?.status, timerMode, engineThinking]);
 
   useEffect(() => {
     if (!session) {
@@ -140,6 +146,8 @@ export function App() {
   async function move(uciMove: string) {
     setHint(undefined);
     if (session) {
+      // Pause the user clock immediately – Stockfish is now thinking
+      setEngineThinking(true);
       try {
         const response = await api.move(session.id, uciMove);
         const terminalStatus = response.checkmate
@@ -149,6 +157,8 @@ export function App() {
             : response.gameState === 'draw'
               ? 'DRAW'
               : response.session.status;
+        // Preserve the locally-tracked displaySeconds so the clock is not
+        // reset to the server value (which was frozen at session start).
         setSession({ ...response.session, status: terminalStatus, remainingSeconds: displaySeconds });
         setCoachReview(response);
         setNotice(response.message);
@@ -159,6 +169,9 @@ export function App() {
       } catch (error) {
         setNotice(error instanceof Error ? error.message : 'Illegal move');
         return false;
+      } finally {
+        // Resume the user clock now that it is the player's turn again
+        setEngineThinking(false);
       }
     }
     try {
@@ -334,7 +347,7 @@ export function App() {
             </div>
           </div>
 
-          <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
+          <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} engineThinking={engineThinking} />
           <SessionFinishedBanner session={session} onPracticeAgain={practiceAgain} onAnalyze={analyze} />
           <AnalysisReview solution={solution} session={session} index={solutionIndex} onIndex={setSolutionIndex} />
           <CoachNote review={coachReview} />

@@ -7,9 +7,20 @@ function format(seconds: number) {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function StatStrip({ session }: { session?: SessionDto }) {
+interface Props {
+  session?: SessionDto;
+  engineThinking?: boolean;
+}
+
+export function StatStrip({ session, engineThinking }: Props) {
+  const timerLabel = engineThinking
+    ? 'Engine…'
+    : session
+      ? format(session.remainingSeconds)
+      : '5:00';
+
   const stats = [
-    { icon: Clock3, label: 'Timer', value: session ? format(session.remainingSeconds) : '5:00' },
+    { icon: Clock3, label: 'Timer', value: timerLabel },
     { icon: Gauge, label: 'Accuracy', value: session ? `${session.accuracy}%` : '100%' },
     { icon: Activity, label: 'Mistakes', value: String(session?.mistakes ?? 0) },
     { icon: Flame, label: 'Streak', value: 'Daily' },
@@ -23,7 +34,9 @@ export function StatStrip({ session }: { session?: SessionDto }) {
             <stat.icon size={15} />
             {stat.label}
           </div>
-          <div className="mt-1 text-lg font-semibold">{stat.value}</div>
+          <div className={`mt-1 text-lg font-semibold ${stat.label === 'Timer' && engineThinking ? 'animate-pulse text-amber-500' : ''}`}>
+            {stat.value}
+          </div>
         </div>
       ))}
     </div>

@@ -32,7 +32,7 @@ public class TrainingMapper {
         List<MoveDto> moveDtos = moves.findBySessionOrderByPlyAsc(session).stream().map(this::move).toList();
         return new SessionDto(session.getId(), session.getMode(), session.getDifficulty(), session.getTimerMode(),
             session.getStatus(), session.getStartFen(), session.getCurrentFen(), session.getRemainingSeconds(),
-            session.getHintsUsed(), session.getMistakes(), session.getAccuracy(), session.getStartedAt(),
-            session.getEndedAt(), moveDtos);
+            session.isUserTurn(), session.getHintsUsed(), session.getMistakes(), session.getAccuracy(),
+            session.getStartedAt(), session.getEndedAt(), moveDtos);
     }
 }

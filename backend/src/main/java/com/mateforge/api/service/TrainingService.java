@@ -66,7 +66,7 @@ public class TrainingService {
         AppUser user = user(principal);
         TrainingPuzzle puzzle = resolvePuzzle(request);
         String startFen = request.customFen() != null && !request.customFen().isBlank() ? request.customFen() : puzzle.getFen();
-        rules.board(startFen);
+        rules.board(startFen); // validate FEN
 
         TrainingSession session = new TrainingSession();
         session.setUser(user);
@@ -81,8 +81,15 @@ public class TrainingService {
         session.setRemainingSeconds(request.timerMode() == TimerMode.NONE ? 0 : request.timeLimitSeconds());
         session.setHintsEnabled(request.hintsEnabled());
         session.setTakebacksEnabled(request.takebacksEnabled());
+        // Session starts with it being the user's turn
+        session.setUserTurn(true);
         sessions.save(session);
         publish(session);
+
+        // Pre-warm engine cache for the starting position asynchronously
+        // so the first move response is fast
+        engine.bestMoveAsync(startFen);
+
         return mapper.session(session);
     }
 
@@ -96,6 +103,7 @@ public class TrainingService {
         before.doMove(userMove);
         String afterUserFen = before.getFen();
 
+        // Check optimal move quality (uses cache – fast if already computed)
         EngineService.EngineMove optimal = engine.bestMove(session.getCurrentFen());
         boolean optimalMove = optimal.uci().equals(uci);
         if (!optimalMove) {
@@ -103,6 +111,9 @@ public class TrainingService {
         }
         saveMove(session, uci, san, afterUserFen, false, optimalMove, trainingReason(optimalMove, before));
         session.setCurrentFen(afterUserFen);
+
+        // It is now the engine's turn – mark userTurn = false
+        session.setUserTurn(false);
 
         String engineMove = null;
         Board afterUser = rules.board(afterUserFen);
@@ -121,12 +132,22 @@ public class TrainingService {
             }
         }
 
+        // Engine has moved – it is the user's turn again
+        session.setUserTurn(session.getStatus() == SessionStatus.ACTIVE);
+
         recalculateAccuracy(session);
         sessions.save(session);
         publish(session);
+
+        // Pre-warm engine cache for the new position asynchronously
+        // so the next move response is fast
+        if (session.getStatus() == SessionStatus.ACTIVE) {
+            engine.bestMoveAsync(session.getCurrentFen());
+        }
+
         Board finalBoard = rules.board(session.getCurrentFen());
         return new MoveResponse(mapper.session(session), uci, engineMove, rules.describeState(finalBoard),
-            finalBoard.isKingAttacked(), finalBoard.isMated(), finalBoard.isStaleMate(),
+            finalBoard.isKingAttacked(), rules.isCheckmate(finalBoard), rules.isStalemate(finalBoard),
             moveQuality(optimalMove, before), optimal.uci(), moveText(beforeFen, optimal.uci()), moveText(beforeFen, uci),
             coachNote(optimalMove, moveText(beforeFen, optimal.uci()), before), message(session));
     }
@@ -160,6 +181,7 @@ public class TrainingService {
         List<TrainingMove> remaining = moves.findBySessionOrderByPlyAsc(session);
         session.setCurrentFen(remaining.isEmpty() ? session.getStartFen() : remaining.getLast().getFenAfter());
         session.setMistakes((int) remaining.stream().filter(move -> !move.isEngineMove() && !move.isOptimal()).count());
+        session.setUserTurn(true);
         recalculateAccuracy(session);
         sessions.save(session);
         publish(session);
@@ -227,11 +249,11 @@ public class TrainingService {
     }
 
     private void updateTerminalState(TrainingSession session, Board board) {
-        if (board.isMated()) {
+        if (rules.isCheckmate(board)) {
             session.setStatus(SessionStatus.CHECKMATE);
             session.setEndedAt(Instant.now());
             user(session).setTotalCompleted(user(session).getTotalCompleted() + 1);
-        } else if (board.isStaleMate()) {
+        } else if (rules.isStalemate(board)) {
             session.setStatus(SessionStatus.STALEMATE);
             session.setEndedAt(Instant.now());
         } else if (board.isDraw()) {
@@ -247,7 +269,7 @@ public class TrainingService {
     }
 
     private String trainingReason(boolean optimal, Board boardAfter) {
-        if (boardAfter.isMated()) {
+        if (rules.isCheckmate(boardAfter)) {
             return "Checkmate: the defender has no legal square and cannot block or capture the attacker.";
         }
         if (optimal) {
@@ -257,7 +279,7 @@ public class TrainingService {
     }
 
     private String moveQuality(boolean optimal, Board boardAfter) {
-        if (boardAfter.isMated()) {
+        if (rules.isCheckmate(boardAfter)) {
             return "CHECKMATE";
         }
         if (optimal) {
@@ -270,7 +292,7 @@ public class TrainingService {
     }
 
     private String coachNote(boolean optimal, String bestMove, Board boardAfter) {
-        if (boardAfter.isMated()) {
+        if (rules.isCheckmate(boardAfter)) {
             return "Excellent finish. The defending king has no legal escape, block, or capture.";
         }
         if (optimal) {

@@ -65,6 +65,7 @@ public final class TrainingDtos {
         String startFen,
         String currentFen,
         int remainingSeconds,
+        boolean userTurn,
         int hintsUsed,
         int mistakes,
         double accuracy,
