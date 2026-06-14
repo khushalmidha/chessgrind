@@ -36,7 +36,9 @@ public class RedisCacheService {
             try {
                 template.opsForValue().set(key, mapper.writeValueAsString(value), ttl);
             } catch (RedisConnectionFailureException ignored) {
+                // Redis unavailable – silently skip caching
             } catch (Exception ignored) {
+                // Any other error (SSL, serialization, etc.) – silently skip
             }
         });
     }
@@ -46,6 +48,7 @@ public class RedisCacheService {
             try {
                 template.delete(key);
             } catch (RedisConnectionFailureException ignored) {
+            } catch (Exception ignored) {
             }
         });
     }
@@ -61,6 +64,9 @@ public class RedisCacheService {
         try {
             return Optional.ofNullable(redis.get().opsForValue().get(key));
         } catch (RedisConnectionFailureException ignored) {
+            return Optional.empty();
+        } catch (Exception ignored) {
+            // Catches SSL handshake errors, timeout, etc.
             return Optional.empty();
         }
     }
