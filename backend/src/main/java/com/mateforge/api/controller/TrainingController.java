@@ -1,5 +1,6 @@
 package com.mateforge.api.controller;
 
+import com.mateforge.api.dto.TrainingDtos.GameReportDto;
 import com.mateforge.api.dto.TrainingDtos.HintResponse;
 import com.mateforge.api.dto.TrainingDtos.MoveRequest;
 import com.mateforge.api.dto.TrainingDtos.MoveResponse;
@@ -7,6 +8,7 @@ import com.mateforge.api.dto.TrainingDtos.SessionDto;
 import com.mateforge.api.dto.TrainingDtos.SolutionResponse;
 import com.mateforge.api.dto.TrainingDtos.StartSessionRequest;
 import com.mateforge.api.security.UserPrincipal;
+import com.mateforge.api.service.GeminiReportService;
 import com.mateforge.api.service.TrainingService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -17,15 +19,18 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/sessions")
 public class TrainingController {
     private final TrainingService training;
+    private final GeminiReportService reports;
 
-    public TrainingController(TrainingService training) {
+    public TrainingController(TrainingService training, GeminiReportService reports) {
         this.training = training;
+        this.reports = reports;
     }
 
     @PostMapping
@@ -61,5 +66,14 @@ public class TrainingController {
     @GetMapping("/{id}/solution")
     SolutionResponse solution(@PathVariable UUID id, @AuthenticationPrincipal UserPrincipal principal) {
         return training.solution(id, principal);
+    }
+
+    @GetMapping("/{id}/report")
+    GameReportDto report(
+        @PathVariable UUID id,
+        @RequestParam(defaultValue = "false") boolean refresh,
+        @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        return reports.sessionReport(id, principal, refresh);
     }
 }

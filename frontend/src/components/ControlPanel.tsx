@@ -1,8 +1,9 @@
-import { BookOpen, Brain, Lightbulb, Play, RotateCcw, Save, StepBack, Target } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { BookOpen, Brain, FileText, Lightbulb, Play, RotateCcw, Save, StepBack, Target, UserRound } from 'lucide-react';
+import { IconButton } from './IconButton';
 import { MoveList } from './MoveList';
+import { ReportPanel } from './ReportPanel';
 import { difficultyLabels, modeLabels } from '../lib/fallback';
-import type { Difficulty, HintResponse, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
+import type { Difficulty, GameReportDto, HintResponse, PlayerProfileReportDto, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
 
 interface Props {
   puzzles: PuzzleDto[];
@@ -12,6 +13,11 @@ interface Props {
   timeLimit: number;
   session?: SessionDto;
   hint?: HintResponse;
+  gameReport?: GameReportDto;
+  profileReport?: PlayerProfileReportDto;
+  reportLoading?: 'session' | 'profile';
+  reportError?: string;
+  reportsUnavailable?: boolean;
   busy: boolean;
   customFen: string;
   onMode: (mode: TrainingMode) => void;
@@ -24,6 +30,8 @@ interface Props {
   onHint: () => void;
   onUndo: () => void;
   onAnalyze: () => void;
+  onReport: (refresh?: boolean) => void;
+  onProfileReport: (refresh?: boolean) => void;
 }
 
 const modes: TrainingMode[] = [
@@ -38,30 +46,28 @@ const modes: TrainingMode[] = [
 ];
 
 export function ControlPanel(props: Props) {
+  const sessionEnded = props.session && props.session.status !== 'ACTIVE';
+
   return (
-    <aside className="flex h-full flex-col gap-4 rounded-md border border-black/10 bg-white/82 p-4 backdrop-blur dark:border-white/10 dark:bg-[#171b15]/88">
+    <aside className="mf-panel flex h-full flex-col gap-4 rounded-forge p-4">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">MateForge</h1>
-          <p className="text-sm text-black/55 dark:text-white/55">Checkmate drills against best defense.</p>
+        <div className="flex items-center gap-3">
+          <div className="mf-wordmark-mark flex h-10 w-10 items-center justify-center rounded-tool font-display text-lg font-bold text-white">M</div>
+          <div>
+            <h1 className="mf-wordmark text-2xl font-bold">MateForge</h1>
+            <p className="text-sm text-black/55 dark:text-white/55">Pattern drills against best defense.</p>
+          </div>
         </div>
-        <Target className="text-moss" />
+        <Target className="text-copper dark:text-ember" />
       </div>
 
-      <div className="grid gap-2">
-        <div className="text-sm font-semibold">Mode</div>
-        <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-3">
+        <label className="font-display text-sm font-bold" htmlFor="mode">Mode</label>
+        <select id="mode" value={props.mode} onChange={(event) => props.onMode(event.target.value as TrainingMode)} className="mf-input rounded-tool p-2">
           {modes.map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => props.onMode(mode)}
-              className={`min-h-11 rounded-md border px-3 py-2 text-left text-sm font-semibold transition ${props.mode === mode ? 'border-moss bg-moss text-white' : 'border-black/10 bg-white hover:border-moss dark:border-white/10 dark:bg-white/10'}`}
-            >
-              {modeLabels[mode]}
-            </button>
+            <option key={mode} value={mode}>{modeLabels[mode]}</option>
           ))}
-        </div>
+        </select>
       </div>
 
       <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Difficulty">
@@ -70,7 +76,7 @@ export function ControlPanel(props: Props) {
             key={difficulty}
             type="button"
             onClick={() => props.onDifficulty(difficulty)}
-            className={`rounded-md border px-2 py-2 text-sm font-semibold ${props.difficulty === difficulty ? 'border-moss bg-moss text-white' : 'border-black/10 bg-white dark:border-white/10 dark:bg-white/10'}`}
+            className={`rounded-tool border px-2 py-2 text-sm font-bold transition ${props.difficulty === difficulty ? 'border-copper bg-copper text-white shadow-forge' : 'border-black/10 bg-white/70 hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember'}`}
           >
             {difficultyLabels[difficulty]}
           </button>
@@ -82,12 +88,12 @@ export function ControlPanel(props: Props) {
           value={props.customFen}
           onChange={(event) => props.onCustomFen(event.target.value)}
           placeholder="Paste FEN"
-          className="min-h-20 rounded-md border border-black/10 bg-white p-2 text-sm dark:border-white/10 dark:bg-white/10"
+          className="mf-input min-h-20 rounded-tool p-2 text-sm"
         />
       )}
 
       <div className="grid grid-cols-[1fr_auto] gap-3">
-        <select value={props.timerMode} onChange={(event) => props.onTimerMode(event.target.value as TimerMode)} className="rounded-md border border-black/10 bg-white p-2 dark:border-white/10 dark:bg-white/10">
+        <select value={props.timerMode} onChange={(event) => props.onTimerMode(event.target.value as TimerMode)} className="mf-input rounded-tool p-2">
           <option value="FIXED_COUNTDOWN">Countdown</option>
           <option value="INCREMENTAL">Increment</option>
           <option value="NONE">No timer</option>
@@ -98,52 +104,67 @@ export function ControlPanel(props: Props) {
           step={30}
           value={props.timeLimit}
           onChange={(event) => props.onTimeLimit(Number(event.target.value))}
-          className="w-24 rounded-md border border-black/10 bg-white p-2 dark:border-white/10 dark:bg-white/10"
+          className="mf-input w-24 rounded-tool p-2"
           aria-label="Time limit seconds"
         />
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={props.busy} onClick={props.onStart} className="inline-flex items-center gap-2 rounded-md bg-moss px-4 py-2 font-semibold text-white disabled:opacity-60">
+        <button type="button" disabled={props.busy} onClick={props.onStart} className="inline-flex items-center gap-2 rounded-tool bg-copper px-4 py-2 font-bold text-white shadow-forge transition hover:bg-copper/90 disabled:opacity-60 dark:bg-ember dark:text-night dark:hover:bg-ember/90">
           <Play size={18} />
           Start
         </button>
-        <Action icon={<RotateCcw size={17} />} label="Reset" onClick={props.onReset} />
-        <Action icon={<Lightbulb size={17} />} label="Hint" onClick={props.onHint} />
-        <Action icon={<StepBack size={17} />} label="Undo" onClick={props.onUndo} />
-        <Action icon={<Brain size={17} />} label="Analyze" onClick={props.onAnalyze} />
-        <Action icon={<Save size={17} />} label="Save" />
+        <IconButton icon={<RotateCcw size={18} />} label="Reset" onClick={props.onReset} />
+        <IconButton icon={<Lightbulb size={18} />} label="Hint" onClick={props.onHint} />
+        <IconButton icon={<StepBack size={18} />} label="Undo" onClick={props.onUndo} />
+        <IconButton icon={<Brain size={18} />} label="Analyze" onClick={props.onAnalyze} />
+        <IconButton icon={<Save size={18} />} label="Save position" />
       </div>
 
+      {!props.reportsUnavailable && (
+        <div className="flex flex-wrap gap-2">
+          {sessionEnded && (
+            <button type="button" onClick={() => props.onReport()} className="inline-flex items-center gap-2 rounded-tool border border-black/10 bg-white/60 px-3 py-2 text-sm font-bold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember">
+              <FileText size={16} />
+              Report
+            </button>
+          )}
+          <button type="button" onClick={() => props.onProfileReport()} className="inline-flex items-center gap-2 rounded-tool border border-black/10 bg-white/60 px-3 py-2 text-sm font-bold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember">
+            <UserRound size={16} />
+            Profile
+          </button>
+          {(props.gameReport || props.profileReport) && (
+            <button type="button" onClick={() => (props.profileReport ? props.onProfileReport(true) : props.onReport(true))} className="rounded-tool border border-black/10 bg-white/60 px-3 py-2 text-sm font-semibold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember">
+              Refresh
+            </button>
+          )}
+        </div>
+      )}
+
       {props.hint && (
-        <div className="rounded-md border border-ember/40 bg-ember/10 p-3 text-sm">
+        <div className="rounded-forge border border-ember/40 bg-ember/10 p-3 text-sm">
           <div className="font-semibold">Hint: {props.hint.bestMove}</div>
           <p className="mt-1 text-black/65 dark:text-white/70">{props.hint.reason}</p>
         </div>
       )}
 
-      <div className="flex items-center gap-2 text-sm font-semibold">
+      <div className="flex items-center gap-2 font-display text-sm font-bold">
         <BookOpen size={17} />
         Move history
       </div>
       <MoveList moves={props.session?.moves ?? []} />
 
+      <ReportPanel
+        gameReport={props.gameReport}
+        profileReport={props.profileReport}
+        baseMoves={props.session?.moves ?? []}
+        loading={props.reportLoading}
+        error={props.reportError}
+      />
+
       <div className="text-xs leading-5 text-black/50 dark:text-white/50">
         {props.puzzles.length} prepared positions loaded. Engine defense and optimal-line replay use the Java UCI service when connected.
       </div>
     </aside>
-  );
-}
-
-function Action({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-md border border-black/10 bg-white/85 px-3 py-2 text-sm font-semibold transition hover:border-moss dark:border-white/10 dark:bg-white/10"
-    >
-      {icon}
-      {label}
-    </button>
   );
 }

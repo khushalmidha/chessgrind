@@ -5,9 +5,6 @@ spring:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/mateforge}
     username: ${DATABASE_USERNAME:mateforge}
     password: ${DATABASE_PASSWORD:mateforge}
-  data:
-    redis:
-      url: ${REDIS_URL:redis://localhost:6379}
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
@@ -30,12 +27,12 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   engine:
     stockfish-path: ${STOCKFISH_PATH:stockfish}
-    move-time-ms: ${STOCKFISH_MOVE_TIME_MS:80}
-    line-depth: ${STOCKFISH_LINE_DEPTH:10}
-    threads: ${STOCKFISH_THREADS:1}
-    hash-mb: ${STOCKFISH_HASH_MB:32}
+    move-time-ms: ${STOCKFISH_MOVE_TIME_MS:250}
+    line-depth: ${STOCKFISH_LINE_DEPTH:14}
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-2.5-flash}
   rate-limit:
     requests-per-minute: ${RATE_LIMIT_RPM:120}
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
-  frontend-url: ${FRONTEND_URL:http://localhost:5173}

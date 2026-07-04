@@ -69,11 +69,6 @@ export interface MoveResponse {
   check: boolean;
   checkmate: boolean;
   stalemate: boolean;
-  moveQuality?: 'BEST' | 'CHECKMATE' | 'INACCURACY' | 'MISTAKE' | 'BLUNDER';
-  bestMove?: string;
-  bestMoveText?: string;
-  userMoveText?: string;
-  coachNote?: string;
   message: string;
 }
 
@@ -89,6 +84,31 @@ export interface SolutionResponse {
   summary: string;
 }
 
+export interface MoveHighlightDto {
+  ply: number;
+  comment: string;
+}
+
+export interface GameReportDto {
+  summary: string;
+  strengths: string[];
+  weaknesses: string[];
+  recurringMistakes: string[];
+  moveHighlights: MoveHighlightDto[];
+  nextFocusAreas: string[];
+  overallRatingBand: string;
+}
+
+export interface PlayerProfileReportDto {
+  playerLevel: string;
+  styleSummary: string;
+  strongModes: string[];
+  weakModes: string[];
+  trendNotes: string;
+  recommendedDrills: string[];
+  consistencyScore: number;
+}
+
 export interface AuthResponse {
   token: string;
   userId: string;
@@ -96,44 +116,39 @@ export interface AuthResponse {
   email: string;
 }
 
-export interface ProgressSummary {
-  completed: number;
-  activeSessions: number;
-  streakDays: number;
-  averageAccuracy: number;
-  rank: number;
-  totalRankedUsers: number;
-  bestCheckmateSeconds?: number;
-  recentMistakes: string[];
+export interface FavoriteDto {
+  id: string;
+  name: string;
+  fen: string;
 }
 
-export interface LeaderboardEntry {
-  username: string;
-  mode: TrainingMode;
-  difficulty: Difficulty;
-  seconds: number;
+export interface AccuracyPointDto {
+  date: string;
   accuracy: number;
 }
 
-export interface TournamentParticipant {
-  userId: string;
-  username: string;
-  score: number;
-  bestTimeSeconds: number;
-  bestAccuracy: number;
+export interface ModeBestTimeDto {
+  mode: TrainingMode;
+  seconds?: number;
 }
 
-export interface Tournament {
-  id: string;
-  name: string;
-  joinCode: string;
-  shareUrl: string;
-  status: 'DRAFT' | 'OPEN' | 'ACTIVE' | 'FINISHED';
+export interface ModeDifficultyBreakdownDto {
   mode: TrainingMode;
   difficulty: Difficulty;
-  timeLimitSeconds: number;
-  maxPlayers: number;
-  playerCount: number;
-  createdAt: string;
-  participants: TournamentParticipant[];
+  sessionsPlayed: number;
+  averageAccuracy: number;
+}
+
+export interface ProfileDto {
+  username: string;
+  joinDate: string;
+  totalSessions: number;
+  totalCompleted: number;
+  currentStreak: number;
+  bestTimes: ModeBestTimeDto[];
+  accuracyTrend: AccuracyPointDto[];
+  breakdown: ModeDifficultyBreakdownDto[];
+  favoritePositionsCount: number;
+  leaderboardRank: number;
+  totalRankedUsers: number;
 }

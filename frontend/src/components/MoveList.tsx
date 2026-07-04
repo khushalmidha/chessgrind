@@ -3,18 +3,18 @@ import type { MoveDto } from '../types/api';
 
 export function MoveList({ moves }: { moves: MoveDto[] }) {
   return (
-    <div className="h-48 overflow-auto rounded-md border border-black/10 bg-white/80 dark:border-white/10 dark:bg-white/10">
+    <div className="h-48 overflow-auto rounded-forge border border-black/10 bg-[#fffaf2]/70 dark:border-white/10 dark:bg-white/5">
       {moves.length === 0 ? (
         <div className="p-4 text-sm text-black/55 dark:text-white/55">No moves yet.</div>
       ) : (
-        <ol className="divide-y divide-black/5 dark:divide-white/10">
+        <ol className="relative space-y-1 p-2 before:absolute before:left-7 before:top-4 before:h-[calc(100%-2rem)] before:w-px before:bg-copper/20 dark:before:bg-ember/25">
           {moves.map((move) => (
-            <li key={`${move.ply}-${move.uci}`} className="grid grid-cols-[3rem_1fr] gap-2 p-3 text-sm">
-              <span className="text-black/45 dark:text-white/45">{move.ply}.</span>
-              <div>
+            <li key={`${move.ply}-${move.uci}`} className="relative grid grid-cols-[2.75rem_1fr] gap-2 rounded-tool p-2 text-sm transition hover:bg-copper/5 dark:hover:bg-ember/10">
+              <span className="z-10 flex h-8 w-8 items-center justify-center rounded-full border border-copper/30 bg-[#fffaf2] font-display text-xs font-bold text-copper dark:border-ember/40 dark:bg-[#211a2e] dark:text-ember">{move.ply}</span>
+              <div className="min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={clsx('font-semibold', move.engineMove ? 'text-ember' : 'text-moss')}>{move.san}</span>
-                  <span className="text-xs text-black/45 dark:text-white/45">{move.engineMove ? 'Defense' : move.optimal ? 'Best' : 'Inexact'}</span>
+                  <span className={clsx('font-display font-bold', move.engineMove ? 'text-violet dark:text-forge' : move.optimal ? 'text-copper dark:text-ember' : 'text-ember')}>{move.san}</span>
+                  <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold text-black/50 dark:bg-white/10 dark:text-white/55">{move.engineMove ? 'Defense' : move.optimal ? 'Best' : 'Inexact'}</span>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-black/55 dark:text-white/55">{move.reason}</p>
               </div>

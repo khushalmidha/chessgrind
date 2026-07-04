@@ -10,3 +10,4 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 .env
 .env.*
+!**/.env.example

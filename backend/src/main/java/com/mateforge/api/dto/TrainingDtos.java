@@ -65,7 +65,6 @@ public final class TrainingDtos {
         String startFen,
         String currentFen,
         int remainingSeconds,
-        boolean userTurn,
         int hintsUsed,
         int mistakes,
         double accuracy,
@@ -83,11 +82,6 @@ public final class TrainingDtos {
         boolean check,
         boolean checkmate,
         boolean stalemate,
-        String moveQuality,
-        String bestMove,
-        String bestMoveText,
-        String userMoveText,
-        String coachNote,
         String message
     ) {
     }
@@ -96,5 +90,30 @@ public final class TrainingDtos {
     }
 
     public record LeaderboardEntry(String username, TrainingMode mode, Difficulty difficulty, int seconds, double accuracy) {
+    }
+
+    public record MoveHighlightDto(int ply, String comment) {
+    }
+
+    public record GameReportDto(
+        String summary,
+        List<String> strengths,
+        List<String> weaknesses,
+        List<String> recurringMistakes,
+        List<MoveHighlightDto> moveHighlights,
+        List<String> nextFocusAreas,
+        String overallRatingBand
+    ) {
+    }
+
+    public record PlayerProfileReportDto(
+        String playerLevel,
+        String styleSummary,
+        List<String> strongModes,
+        List<String> weakModes,
+        String trendNotes,
+        List<String> recommendedDrills,
+        int consistencyScore
+    ) {
     }
 }

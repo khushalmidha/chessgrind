@@ -17,11 +17,7 @@ export function TrainingBoard({ fen, session, hint, solutionMove, onMove }: Prop
   const [selected, setSelected] = useState<string>();
   const legalSquares = useMemo(() => (selected ? legalDestinations(fen, selected) : []), [fen, selected]);
   const lastMove = session?.moves[session.moves.length - 1]?.uci;
-  const arrows = [
-    arrowFromMove(lastMove, '#f6c344'),
-    arrowFromMove(hint?.bestMove, '#f6a04d'),
-    arrowFromMove(solutionMove, '#81b64c'),
-  ].filter(Boolean) as never;
+  const arrows = [...arrowFromMove(lastMove), ...arrowFromMove(hint?.bestMove), ...arrowFromMove(solutionMove)] as never;
 
   const customSquareStyles = useMemo(() => {
     const styles: Record<string, CSSProperties> = {};
@@ -52,13 +48,13 @@ export function TrainingBoard({ fen, session, hint, solutionMove, onMove }: Prop
 
   return (
     <div className="mx-auto w-full max-w-[min(86vh,720px)]">
-      <div className="overflow-hidden rounded-md shadow-board">
+      <div className="overflow-hidden rounded-forge border border-black/10 bg-[#7a4b2a] p-2 shadow-board dark:border-white/10">
         <Chessboard
           position={fen}
           boardWidth={Math.min(720, Math.max(320, window.innerWidth > 900 ? window.innerHeight * 0.74 : window.innerWidth - 32))}
-          customBoardStyle={{ borderRadius: 6 }}
-          customDarkSquareStyle={{ backgroundColor: '#769656' }}
-          customLightSquareStyle={{ backgroundColor: '#eeeed2' }}
+          customBoardStyle={{ borderRadius: 10 }}
+          customDarkSquareStyle={{ backgroundColor: '#9f6f43' }}
+          customLightSquareStyle={{ backgroundColor: '#ead8b7' }}
           customSquareStyles={customSquareStyles}
           customArrows={arrows}
           arePremovesAllowed
