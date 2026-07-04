@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Dumbbell, Moon, Sun, UserRound } from 'lucide-react';
+import { Dumbbell, LogOut, Moon, Play, Sun, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AuthPanel } from '../components/AuthPanel';
 import { ControlPanel } from '../components/ControlPanel';
@@ -15,7 +15,7 @@ import type { AuthResponse, Difficulty, GameReportDto, HintResponse, MoveDto, Pl
 
 export function App() {
   const [dark, setDark] = useState(true);
-  const [route, setRoute] = useState<'profile' | 'train'>(() => window.location.pathname === '/profile' ? 'profile' : 'train');
+  const [route, setRoute] = useState<'profile' | 'train'>(() => window.location.pathname === '/play' ? 'train' : 'profile');
   const [puzzles, setPuzzles] = useState<PuzzleDto[]>(fallbackPuzzles);
   const [mode, setMode] = useState<TrainingMode>('KING_ROOK_VS_KING');
   const [difficulty, setDifficulty] = useState<Difficulty>('BEGINNER');
@@ -42,7 +42,7 @@ export function App() {
   }, [dark]);
 
   useEffect(() => {
-    const onPopState = () => setRoute(window.location.pathname === '/profile' ? 'profile' : 'train');
+    const onPopState = () => setRoute(window.location.pathname === '/play' ? 'train' : 'profile');
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -123,10 +123,11 @@ export function App() {
       setLocalFen(started.currentFen);
       setNotice('Session started. Make the attacking move; the king will defend.');
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not start session';
       setSession(undefined);
       const startFen = mode === 'CUSTOM' && customFen ? customFen : selectedPuzzle.fen;
       setLocalFen(startFen);
-      setNotice(error instanceof Error ? `${error.message}. Running local board mode.` : 'Running local board mode.');
+      setNotice(`${message}. Started local board mode; backend session did not start.`);
     } finally {
       setBusy(false);
     }
@@ -270,9 +271,62 @@ export function App() {
   }
 
   function navigate(nextRoute: 'train' | 'profile') {
-    const path = nextRoute === 'profile' ? '/profile' : '/';
+    const path = nextRoute === 'profile' ? '/profile' : '/play';
     window.history.pushState({}, '', path);
     setRoute(nextRoute);
+  }
+
+  function playFromProfile() {
+    if (!token() || !user) {
+      setNotice('Sign in first, then press Play.');
+      return;
+    }
+    navigate('train');
+    void start();
+  }
+
+  function accountChip() {
+    if (!user) {
+      return (
+        <button
+          type="button"
+          onClick={() => navigate('profile')}
+          className="inline-flex items-center gap-2 rounded-tool border border-black/10 bg-white/70 px-3 py-2 text-sm font-bold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember"
+        >
+          <UserRound size={17} />
+          Account
+        </button>
+      );
+    }
+    return (
+      <div className="flex items-center gap-2 rounded-tool border border-black/10 bg-white/70 px-2 py-1.5 shadow-insetGlow dark:border-white/10 dark:bg-white/10">
+        <button type="button" onClick={() => navigate('profile')} className="flex min-w-0 items-center gap-2 pr-1 text-left">
+          <span className="mf-wordmark-mark flex h-8 w-8 shrink-0 items-center justify-center rounded-tool font-display text-sm font-bold text-white">
+            {user.username.slice(0, 1).toUpperCase()}
+          </span>
+          <span className="hidden min-w-0 sm:block">
+            <span className="block truncate text-sm font-bold">{user.username}</span>
+            <span className="block truncate text-xs text-black/50 dark:text-white/50">{user.email}</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          title="Sign out"
+          aria-label="Sign out"
+          onClick={() => {
+            localStorage.removeItem('mateforge.token');
+            localStorage.removeItem('mateforge.user');
+            setUser(undefined);
+            setSession(undefined);
+            navigate('profile');
+            setNotice('Signed out.');
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-tool border border-black/10 transition hover:border-copper hover:text-copper dark:border-white/10 dark:hover:border-ember dark:hover:text-ember"
+        >
+          <LogOut size={15} />
+        </button>
+      </div>
+    );
   }
 
   if (route === 'profile') {
@@ -288,6 +342,7 @@ export function App() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {accountChip()}
               <IconButton icon={<Dumbbell size={18} />} label="Training" onClick={() => navigate('train')} />
               <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
             </div>
@@ -300,7 +355,7 @@ export function App() {
               <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
             </div>
           ) : (
-            <Profile onNotice={setNotice} />
+            <Profile onNotice={setNotice} onPlay={playFromProfile} />
           )}
         </div>
       </main>
@@ -329,7 +384,16 @@ export function App() {
                   <button type="button" className="rounded-tool border border-black/10 bg-white/70 px-3 py-2 text-sm font-semibold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember" onClick={() => setSolutionIndex(Math.min(solution.length - 1, solutionIndex + 1))}>Next</button>
                 </div>
               )}
-              <IconButton icon={<UserRound size={18} />} label="Profile" onClick={() => navigate('profile')} />
+              <button
+                type="button"
+                onClick={playFromProfile}
+                disabled={busy}
+                className="inline-flex items-center gap-2 rounded-tool bg-copper px-3 py-2 text-sm font-bold text-white shadow-forge transition hover:bg-copper/90 disabled:opacity-60 dark:bg-ember dark:text-night dark:hover:bg-ember/90"
+              >
+                <Play size={17} />
+                Play
+              </button>
+              {accountChip()}
               <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
             </div>
           </div>
@@ -368,9 +432,11 @@ export function App() {
               onReport={requestReport}
               onProfileReport={requestProfileReport}
             />
-            <div className="mt-4">
-              <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
-            </div>
+            {!user && (
+              <div className="mt-4">
+                <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
       </div>

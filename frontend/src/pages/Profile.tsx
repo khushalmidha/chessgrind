@@ -1,4 +1,4 @@
-import { RefreshCw, Trophy, UserRound } from 'lucide-react';
+import { Play, RefreshCw, Trophy, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ReportPanel } from '../components/ReportPanel';
 import { api } from '../lib/api';
@@ -7,9 +7,10 @@ import type { FavoriteDto, PlayerProfileReportDto, ProfileDto, TrainingMode } fr
 
 interface Props {
   onNotice: (message: string) => void;
+  onPlay: () => void;
 }
 
-export function Profile({ onNotice }: Props) {
+export function Profile({ onNotice, onPlay }: Props) {
   const [profile, setProfile] = useState<ProfileDto>();
   const [favorites, setFavorites] = useState<FavoriteDto[]>([]);
   const [profileReport, setProfileReport] = useState<PlayerProfileReportDto>();
@@ -97,6 +98,14 @@ export function Profile({ onNotice }: Props) {
             <Metric label="Rank" value={profile.leaderboardRank ? `#${profile.leaderboardRank}` : '-'} />
             <Metric label="Sessions" value={`${profile.totalSessions}`} />
           </div>
+          <button
+            type="button"
+            onClick={onPlay}
+            className="inline-flex items-center gap-2 rounded-tool bg-copper px-4 py-2 font-bold text-white shadow-forge transition hover:bg-copper/90 dark:bg-ember dark:text-night dark:hover:bg-ember/90"
+          >
+            <Play size={18} />
+            Play
+          </button>
         </div>
       </div>
 
