@@ -35,6 +35,12 @@ public class AppUser {
     @Column(nullable = false)
     private int totalCompleted;
 
+    @Column(columnDefinition = "TEXT")
+    private String profileReportJson;
+
+    @Column(length = 120)
+    private String profileReportFingerprint;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 }

@@ -65,9 +65,6 @@ public class TrainingSession {
     private int remainingSeconds;
 
     @Column(nullable = false)
-    private boolean userTurn;
-
-    @Column(nullable = false)
     private boolean hintsEnabled;
 
     @Column(nullable = false)
@@ -81,6 +78,12 @@ public class TrainingSession {
 
     @Column(nullable = false)
     private double accuracy;
+
+    @Column(columnDefinition = "TEXT")
+    private String reportJson;
+
+    @Column(length = 120)
+    private String reportFingerprint;
 
     @Column(nullable = false)
     private Instant startedAt = Instant.now();

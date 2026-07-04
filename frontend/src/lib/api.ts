@@ -1,14 +1,15 @@
 import type {
   AuthResponse,
+  FavoriteDto,
   HintResponse,
-  LeaderboardEntry,
+  GameReportDto,
   MoveResponse,
+  PlayerProfileReportDto,
+  ProfileDto,
   PuzzleDto,
-  ProgressSummary,
   SessionDto,
   SolutionResponse,
   StartSessionRequest,
-  Tournament,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -30,7 +31,13 @@ export function clearAuth() {
 
 export function currentUser(): AuthResponse | undefined {
   const raw = localStorage.getItem(USER_KEY);
-  return raw ? JSON.parse(raw) as AuthResponse : undefined;
+  try {
+    return raw ? JSON.parse(raw) as AuthResponse : undefined;
+  } catch {
+    clearAuth();
+    return undefined;
+    // FIXED: corrupt stored user JSON could crash app startup while leaving the JWT behind.
+  }
 }
 
 export function setAuth(value: AuthResponse) {
@@ -45,8 +52,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (auth) {
     headers.set('Authorization', `Bearer ${auth}`);
   }
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch {
+    throw new Error('Network error: API is unreachable');
+    // FIXED: network failures were surfaced as generic rejected fetches without a user-readable API error.
+  }
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAuth();
+      // FIXED: expired JWTs left token and user state in storage until manual logout.
+    }
     const body = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(body.message ?? 'Request failed');
   }
@@ -68,11 +85,10 @@ export const api = {
   hint: (sessionId: string) => request<HintResponse>(`/api/sessions/${sessionId}/hint`, { method: 'POST' }),
   undo: (sessionId: string) => request<SessionDto>(`/api/sessions/${sessionId}/undo`, { method: 'POST' }),
   solution: (sessionId: string) => request<SolutionResponse>(`/api/sessions/${sessionId}/solution`),
-  progress: () => request<ProgressSummary>('/api/analytics/progress'),
-  leaderboard: () => request<LeaderboardEntry[]>('/api/leaderboard'),
-  createTournament: (payload: { name: string; mode: string; difficulty: string; timeLimitSeconds: number; maxPlayers: number }) =>
-    request<Tournament>('/api/tournaments', { method: 'POST', body: JSON.stringify(payload) }),
-  myTournaments: () => request<Tournament[]>('/api/tournaments/mine'),
-  tournament: (joinCode: string) => request<Tournament>(`/api/tournaments/${joinCode}`),
-  joinTournament: (joinCode: string) => request<Tournament>(`/api/tournaments/${joinCode}/join`, { method: 'POST' }),
+  report: (sessionId: string, refresh = false) =>
+    request<GameReportDto>(`/api/sessions/${sessionId}/report?refresh=${refresh ? 'true' : 'false'}`),
+  profile: () => request<ProfileDto>('/api/analytics/profile'),
+  profileReport: (refresh = false) =>
+    request<PlayerProfileReportDto>(`/api/analytics/profile-report?refresh=${refresh ? 'true' : 'false'}`),
+  favorites: () => request<FavoriteDto[]>('/api/favorites'),
 };

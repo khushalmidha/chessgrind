@@ -1,8 +1,6 @@
 package com.mateforge.api.service;
 
 import com.github.bhlangonijr.chesslib.Board;
-import com.github.bhlangonijr.chesslib.Piece;
-import com.github.bhlangonijr.chesslib.Square;
 import com.github.bhlangonijr.chesslib.move.Move;
 import com.mateforge.api.dto.TrainingDtos.HintResponse;
 import com.mateforge.api.dto.TrainingDtos.MoveResponse;
@@ -20,6 +18,7 @@ import com.mateforge.api.repository.TrainingMoveRepository;
 import com.mateforge.api.repository.TrainingPuzzleRepository;
 import com.mateforge.api.repository.TrainingSessionRepository;
 import com.mateforge.api.security.UserPrincipal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -66,7 +65,8 @@ public class TrainingService {
         AppUser user = user(principal);
         TrainingPuzzle puzzle = resolvePuzzle(request);
         String startFen = request.customFen() != null && !request.customFen().isBlank() ? request.customFen() : puzzle.getFen();
-        rules.board(startFen); // validate FEN
+        rules.validatePlayableFen(startFen);
+        // FIXED: custom FEN input previously trusted the client after only basic parsing, allowing impossible positions.
 
         TrainingSession session = new TrainingSession();
         session.setUser(user);
@@ -81,29 +81,21 @@ public class TrainingService {
         session.setRemainingSeconds(request.timerMode() == TimerMode.NONE ? 0 : request.timeLimitSeconds());
         session.setHintsEnabled(request.hintsEnabled());
         session.setTakebacksEnabled(request.takebacksEnabled());
-        // Session starts with it being the user's turn
-        session.setUserTurn(true);
         sessions.save(session);
         publish(session);
-
-        // Pre-warm engine cache for the starting position asynchronously
-        // so the first move response is fast
-        engine.bestMoveAsync(startFen);
-
         return mapper.session(session);
     }
 
     @Transactional
     public MoveResponse play(UUID sessionId, String uci, UserPrincipal principal) {
         TrainingSession session = ownedActiveSession(sessionId, principal);
-        String beforeFen = session.getCurrentFen();
-        Board before = rules.board(beforeFen);
+        // FIXED: server now rejects moves after the authoritative clock expires, even if the client has not reported timeout.
+        Board before = rules.board(session.getCurrentFen());
         Move userMove = rules.requireLegal(before, uci);
         String san = rules.simpleSan(userMove, before);
         before.doMove(userMove);
         String afterUserFen = before.getFen();
 
-        // Check optimal move quality (uses cache – fast if already computed)
         EngineService.EngineMove optimal = engine.bestMove(session.getCurrentFen());
         boolean optimalMove = optimal.uci().equals(uci);
         if (!optimalMove) {
@@ -111,9 +103,8 @@ public class TrainingService {
         }
         saveMove(session, uci, san, afterUserFen, false, optimalMove, trainingReason(optimalMove, before));
         session.setCurrentFen(afterUserFen);
-
-        // It is now the engine's turn – mark userTurn = false
-        session.setUserTurn(false);
+        refreshClock(session, Instant.now(), false);
+        // FIXED: incremental time was ignored after successful user moves, so the backend timer drifted from session rules.
 
         String engineMove = null;
         Board afterUser = rules.board(afterUserFen);
@@ -132,24 +123,13 @@ public class TrainingService {
             }
         }
 
-        // Engine has moved – it is the user's turn again
-        session.setUserTurn(session.getStatus() == SessionStatus.ACTIVE);
-
         recalculateAccuracy(session);
+        refreshClock(session, Instant.now(), false);
         sessions.save(session);
         publish(session);
-
-        // Pre-warm engine cache for the new position asynchronously
-        // so the next move response is fast
-        if (session.getStatus() == SessionStatus.ACTIVE) {
-            engine.bestMoveAsync(session.getCurrentFen());
-        }
-
         Board finalBoard = rules.board(session.getCurrentFen());
         return new MoveResponse(mapper.session(session), uci, engineMove, rules.describeState(finalBoard),
-            finalBoard.isKingAttacked(), rules.isCheckmate(finalBoard), rules.isStalemate(finalBoard),
-            moveQuality(optimalMove, before), optimal.uci(), moveText(beforeFen, optimal.uci()), moveText(beforeFen, uci),
-            coachNote(optimalMove, moveText(beforeFen, optimal.uci()), before), message(session));
+            finalBoard.isKingAttacked(), finalBoard.isMated(), finalBoard.isStaleMate(), message(session));
     }
 
     @Transactional
@@ -181,8 +161,8 @@ public class TrainingService {
         List<TrainingMove> remaining = moves.findBySessionOrderByPlyAsc(session);
         session.setCurrentFen(remaining.isEmpty() ? session.getStartFen() : remaining.getLast().getFenAfter());
         session.setMistakes((int) remaining.stream().filter(move -> !move.isEngineMove() && !move.isOptimal()).count());
-        session.setUserTurn(true);
         recalculateAccuracy(session);
+        refreshClock(session, Instant.now(), false);
         sessions.save(session);
         publish(session);
         return mapper.session(session);
@@ -206,9 +186,13 @@ public class TrainingService {
         return new SolutionResponse(line, "Optimal line generated from the starting position using the configured UCI engine.");
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public SessionDto get(UUID id, UserPrincipal principal) {
-        return mapper.session(ownedSession(id, principal));
+        TrainingSession session = ownedSession(id, principal);
+        if (session.getStatus() == SessionStatus.ACTIVE) {
+            refreshClock(session, Instant.now(), true);
+        }
+        return mapper.session(session);
     }
 
     @Transactional(readOnly = true)
@@ -249,11 +233,11 @@ public class TrainingService {
     }
 
     private void updateTerminalState(TrainingSession session, Board board) {
-        if (rules.isCheckmate(board)) {
+        if (board.isMated()) {
             session.setStatus(SessionStatus.CHECKMATE);
             session.setEndedAt(Instant.now());
             user(session).setTotalCompleted(user(session).getTotalCompleted() + 1);
-        } else if (rules.isStalemate(board)) {
+        } else if (board.isStaleMate()) {
             session.setStatus(SessionStatus.STALEMATE);
             session.setEndedAt(Instant.now());
         } else if (board.isDraw()) {
@@ -269,58 +253,13 @@ public class TrainingService {
     }
 
     private String trainingReason(boolean optimal, Board boardAfter) {
-        if (rules.isCheckmate(boardAfter)) {
+        if (boardAfter.isMated()) {
             return "Checkmate: the defender has no legal square and cannot block or capture the attacker.";
         }
         if (optimal) {
             return "Best technique: this move preserves the mating net against the strongest defense.";
         }
         return "This still may be playable, but the engine found a more forcing move from the same position.";
-    }
-
-    private String moveQuality(boolean optimal, Board boardAfter) {
-        if (rules.isCheckmate(boardAfter)) {
-            return "CHECKMATE";
-        }
-        if (optimal) {
-            return "BEST";
-        }
-        if (boardAfter.isKingAttacked()) {
-            return "INACCURACY";
-        }
-        return "MISTAKE";
-    }
-
-    private String coachNote(boolean optimal, String bestMove, Board boardAfter) {
-        if (rules.isCheckmate(boardAfter)) {
-            return "Excellent finish. The defending king has no legal escape, block, or capture.";
-        }
-        if (optimal) {
-            return "Best move. You kept the mating net intact and gave the defender no easy route back to the center.";
-        }
-        return "There was a more forcing continuation: " + bestMove + ". Try to restrict the king first, then bring the attacking king closer.";
-    }
-
-    private String moveText(String fen, String uci) {
-        if (uci == null || uci.length() < 4) {
-            return uci == null ? "" : uci;
-        }
-        Board board = rules.board(fen);
-        Square from = Square.fromValue(uci.substring(0, 2).toUpperCase());
-        Piece piece = board.getPiece(from);
-        return pieceName(piece) + " to " + uci.substring(2, 4);
-    }
-
-    private String pieceName(Piece piece) {
-        return switch (piece) {
-            case WHITE_KING, BLACK_KING -> "King";
-            case WHITE_QUEEN, BLACK_QUEEN -> "Queen";
-            case WHITE_ROOK, BLACK_ROOK -> "Rook";
-            case WHITE_BISHOP, BLACK_BISHOP -> "Bishop";
-            case WHITE_KNIGHT, BLACK_KNIGHT -> "Knight";
-            case WHITE_PAWN, BLACK_PAWN -> "Pawn";
-            default -> "Move";
-        };
     }
 
     private String message(TrainingSession session) {
@@ -335,10 +274,30 @@ public class TrainingService {
 
     private TrainingSession ownedActiveSession(UUID id, UserPrincipal principal) {
         TrainingSession session = ownedSession(id, principal);
+        refreshClock(session, Instant.now(), true);
         if (session.getStatus() != SessionStatus.ACTIVE) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Session is already finished");
         }
         return session;
+    }
+
+    private void refreshClock(TrainingSession session, Instant now, boolean persistTimeout) {
+        if (session.getTimerMode() == TimerMode.NONE || session.getStatus() != SessionStatus.ACTIVE) {
+            return;
+        }
+        int userMoveCount = (int) moves.findBySessionOrderByPlyAsc(session).stream().filter(move -> !move.isEngineMove()).count();
+        long elapsed = Math.max(0, Duration.between(session.getStartedAt(), now).toSeconds());
+        int remaining = (int) Math.max(0, session.getTimeLimitSeconds() + (long) session.getIncrementSeconds() * userMoveCount - elapsed);
+        session.setRemainingSeconds(remaining);
+        if (remaining == 0) {
+            session.setStatus(SessionStatus.TIMEOUT);
+            session.setEndedAt(now);
+            if (persistTimeout) {
+                sessions.save(session);
+                publish(session);
+            }
+            // FIXED: active sessions could outlive their countdown because elapsed time was never reconciled on the server.
+        }
     }
 
     private TrainingSession ownedSession(UUID id, UserPrincipal principal) {

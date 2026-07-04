@@ -80,10 +80,10 @@ export function AuthPanel({ user, onUser, onNotice }: Props) {
 
   if (user) {
     return (
-      <div className="rounded-md border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-white/10">
+      <div className="mf-panel rounded-forge p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <UserRound size={18} className="text-moss" />
+            <UserRound size={18} className="text-copper dark:text-ember" />
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{user.username}</div>
               <div className="truncate text-xs text-black/50 dark:text-white/50">{user.email}</div>
@@ -91,7 +91,7 @@ export function AuthPanel({ user, onUser, onNotice }: Props) {
           </div>
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-black/10 dark:border-white/10"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-tool border border-black/10 bg-white/60 transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember"
             title="Sign out"
             aria-label="Sign out"
             onClick={() => {
@@ -108,25 +108,25 @@ export function AuthPanel({ user, onUser, onNotice }: Props) {
   }
 
   return (
-    <div className="rounded-md border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-white/10">
+    <div className="mf-panel rounded-forge p-3">
       <div className="mb-3 flex gap-2">
         {(['login', 'register'] as const).map((item) => (
           <button
             key={item}
             type="button"
             onClick={() => setMode(item)}
-            className={`rounded-md px-3 py-2 text-sm font-semibold ${mode === item ? 'bg-moss text-white' : 'bg-black/5 dark:bg-white/10'}`}
+            className={`rounded-tool px-3 py-2 text-sm font-bold transition ${mode === item ? 'bg-copper text-white shadow-forge dark:bg-ember dark:text-night' : 'bg-black/5 hover:text-copper dark:bg-white/10 dark:hover:text-ember'}`}
           >
             {item === 'login' ? 'Sign in' : 'Create account'}
           </button>
         ))}
       </div>
       {mode === 'register' && (
-        <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" className="mb-2 w-full rounded-md border border-black/10 bg-white p-2 text-sm dark:border-white/10 dark:bg-white/10" />
+        <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" className="mf-input mb-2 w-full rounded-tool p-2 text-sm" />
       )}
-      <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="mb-2 w-full rounded-md border border-black/10 bg-white p-2 text-sm dark:border-white/10 dark:bg-white/10" />
-      <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Password" className="mb-3 w-full rounded-md border border-black/10 bg-white p-2 text-sm dark:border-white/10 dark:bg-white/10" />
-      <button type="button" onClick={submit} className="mb-3 w-full rounded-md bg-moss px-3 py-2 text-sm font-semibold text-white">
+      <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="mf-input mb-2 w-full rounded-tool p-2 text-sm" />
+      <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Password" className="mf-input mb-3 w-full rounded-tool p-2 text-sm" />
+      <button type="button" onClick={submit} className="mb-3 w-full rounded-tool bg-copper px-3 py-2 text-sm font-bold text-white shadow-forge transition hover:bg-copper/90 dark:bg-ember dark:text-night dark:hover:bg-ember/90">
         {mode === 'login' ? 'Sign in' : 'Create account'}
       </button>
       {googleClientId ? <div ref={googleRef} className="min-h-10" /> : <div className="text-xs text-black/50 dark:text-white/50">Add VITE_GOOGLE_CLIENT_ID to enable Google sign-in.</div>}

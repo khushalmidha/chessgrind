@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS app_users (
     password_hash VARCHAR(255) NOT NULL,
     streak_days INTEGER NOT NULL DEFAULT 0,
     total_completed INTEGER NOT NULL DEFAULT 0,
+    profile_report_json TEXT,
+    profile_report_fingerprint VARCHAR(120),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -39,6 +41,8 @@ CREATE TABLE IF NOT EXISTS training_sessions (
     hints_used INTEGER NOT NULL DEFAULT 0,
     mistakes INTEGER NOT NULL DEFAULT 0,
     accuracy DOUBLE PRECISION NOT NULL DEFAULT 100,
+    report_json TEXT,
+    report_fingerprint VARCHAR(120),
     started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at TIMESTAMPTZ
 );
@@ -68,30 +72,3 @@ CREATE TABLE IF NOT EXISTS favorite_positions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user_started ON training_sessions(user_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_moves_session_ply ON training_moves(session_id, ply);
 CREATE INDEX IF NOT EXISTS idx_puzzles_mode_difficulty ON training_puzzles(mode, difficulty);
-
-CREATE TABLE IF NOT EXISTS tournaments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_by_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-    name VARCHAR(120) NOT NULL,
-    join_code VARCHAR(18) NOT NULL UNIQUE,
-    status VARCHAR(24) NOT NULL,
-    mode VARCHAR(40) NOT NULL,
-    difficulty VARCHAR(24) NOT NULL,
-    time_limit_seconds INTEGER NOT NULL,
-    max_players INTEGER NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS tournament_participants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tournament_id UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-    score INTEGER NOT NULL DEFAULT 0,
-    best_time_seconds INTEGER NOT NULL DEFAULT 0,
-    best_accuracy DOUBLE PRECISION NOT NULL DEFAULT 0,
-    joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(tournament_id, user_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_tournaments_join_code ON tournaments(join_code);
-CREATE INDEX IF NOT EXISTS idx_tournament_participants_tournament ON tournament_participants(tournament_id);

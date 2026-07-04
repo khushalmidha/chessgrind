@@ -21,12 +21,31 @@ public class ChessRulesService {
         }
     }
 
+    public Board validatePlayableFen(String fen) {
+        Board board = board(fen);
+        String[] fields = fen == null ? new String[0] : fen.trim().split("\\s+");
+        if (fields.length < 4) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN");
+        }
+        validatePiecePlacement(fields[0]);
+        legalMoves(board);
+        return board;
+        // FIXED: arbitrary FENs could be parsed but still contain impossible king/pawn layouts that break training sessions.
+    }
+
     public Move parseUci(Board board, String uci) {
         if (uci == null || (uci.length() != 4 && uci.length() != 5)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Move must be UCI notation such as e2e4");
         }
-        Square from = Square.fromValue(uci.substring(0, 2).toUpperCase());
-        Square to = Square.fromValue(uci.substring(2, 4).toUpperCase());
+        Square from;
+        Square to;
+        try {
+            from = Square.fromValue(uci.substring(0, 2).toUpperCase());
+            to = Square.fromValue(uci.substring(2, 4).toUpperCase());
+        } catch (RuntimeException ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Move must use valid board squares");
+            // FIXED: malformed UCI squares such as z9z1 previously escaped as server errors.
+        }
         Piece promotion = Piece.NONE;
         if (uci.length() == 5) {
             promotion = promotionPiece(board.getSideToMove(), uci.charAt(4));
@@ -63,10 +82,10 @@ public class ChessRulesService {
     }
 
     public String describeState(Board board) {
-        if (isCheckmate(board)) {
+        if (board.isMated()) {
             return "checkmate";
         }
-        if (isStalemate(board)) {
+        if (board.isStaleMate()) {
             return "stalemate";
         }
         if (board.isDraw()) {
@@ -78,19 +97,11 @@ public class ChessRulesService {
         return "active";
     }
 
-    public boolean isCheckmate(Board board) {
-        return board.isKingAttacked() && legalMoves(board).isEmpty();
-    }
-
-    public boolean isStalemate(Board board) {
-        return !board.isKingAttacked() && legalMoves(board).isEmpty();
-    }
-
     public String simpleSan(Move move, Board before) {
         String suffix = "";
         Board after = board(before.getFen());
         after.doMove(move);
-        if (isCheckmate(after)) {
+        if (after.isMated()) {
             suffix = "#";
         } else if (after.isKingAttacked()) {
             suffix = "+";
@@ -106,5 +117,58 @@ public class ChessRulesService {
             case 'n' -> side == Side.WHITE ? Piece.WHITE_KNIGHT : Piece.BLACK_KNIGHT;
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported promotion piece");
         };
+    }
+
+    private void validatePiecePlacement(String placement) {
+        String[] ranks = placement.split("/");
+        if (ranks.length != 8) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN");
+        }
+        int whiteKings = 0;
+        int blackKings = 0;
+        int whiteKingFile = -1;
+        int whiteKingRank = -1;
+        int blackKingFile = -1;
+        int blackKingRank = -1;
+        for (int rankIndex = 0; rankIndex < ranks.length; rankIndex++) {
+            int file = 0;
+            for (char symbol : ranks[rankIndex].toCharArray()) {
+                if (Character.isDigit(symbol)) {
+                    int emptySquares = Character.digit(symbol, 10);
+                    if (emptySquares < 1 || emptySquares > 8) {
+                        throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN");
+                    }
+                    file += emptySquares;
+                    continue;
+                }
+                if (file >= 8) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN");
+                }
+                if ((symbol == 'P' || symbol == 'p') && (rankIndex == 0 || rankIndex == 7)) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN: pawns cannot be on the first or eighth rank");
+                }
+                if (symbol == 'K') {
+                    whiteKings++;
+                    whiteKingFile = file;
+                    whiteKingRank = rankIndex;
+                } else if (symbol == 'k') {
+                    blackKings++;
+                    blackKingFile = file;
+                    blackKingRank = rankIndex;
+                } else if ("QRBNPqrbnp".indexOf(symbol) < 0) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN");
+                }
+                file++;
+            }
+            if (file != 8) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN");
+            }
+        }
+        if (whiteKings != 1 || blackKings != 1) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN: exactly one king per side is required");
+        }
+        if (Math.abs(whiteKingFile - blackKingFile) <= 1 && Math.abs(whiteKingRank - blackKingRank) <= 1) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid FEN: kings cannot be adjacent");
+        }
     }
 }

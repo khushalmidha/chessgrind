@@ -14,10 +14,10 @@ export function IconButton({ icon, label, active, className, ...props }: Props) 
       title={label}
       aria-label={label}
       className={clsx(
-        'inline-flex h-10 w-10 items-center justify-center rounded-md border transition focus:outline-none focus:ring-2 focus:ring-moss',
+        'inline-flex h-10 w-10 items-center justify-center rounded-tool border transition focus:outline-none focus:ring-2 focus:ring-ember/45',
         active
-          ? 'border-moss bg-moss text-white'
-          : 'border-black/10 bg-white/85 text-ink hover:border-moss dark:border-white/10 dark:bg-white/10 dark:text-white',
+          ? 'border-copper bg-copper text-white shadow-forge'
+          : 'border-black/10 bg-white/80 text-ink shadow-insetGlow hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:text-white dark:hover:border-ember dark:hover:text-ember',
         className,
       )}
       {...props}

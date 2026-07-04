@@ -7,36 +7,36 @@ function format(seconds: number) {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-interface Props {
-  session?: SessionDto;
-  engineThinking?: boolean;
-}
-
-export function StatStrip({ session, engineThinking }: Props) {
-  const timerLabel = engineThinking
-    ? 'Engine…'
-    : session
-      ? format(session.remainingSeconds)
-      : '5:00';
-
+export function StatStrip({ session }: { session?: SessionDto }) {
+  const accuracy = session?.accuracy ?? 100;
   const stats = [
-    { icon: Clock3, label: 'Timer', value: timerLabel },
-    { icon: Gauge, label: 'Accuracy', value: session ? `${session.accuracy}%` : '100%' },
+    { icon: Clock3, label: 'Timer', value: session ? format(session.remainingSeconds) : '5:00' },
+    { icon: Gauge, label: 'Accuracy', value: `${accuracy}%`, ring: true },
     { icon: Activity, label: 'Mistakes', value: String(session?.mistakes ?? 0) },
     { icon: Flame, label: 'Streak', value: 'Daily' },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {stats.map((stat) => (
-        <div key={stat.label} className="rounded-md border border-black/10 bg-white/75 p-3 dark:border-white/10 dark:bg-white/10">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-black/55 dark:text-white/55">
-            <stat.icon size={15} />
-            {stat.label}
+        <div key={stat.label} className="mf-panel rounded-forge p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase text-black/55 dark:text-white/60">
+              <span className="flex h-7 w-7 items-center justify-center rounded-tool bg-copper/10 text-copper dark:bg-ember/15 dark:text-ember">
+                <stat.icon size={15} />
+              </span>
+              {stat.label}
+            </div>
+            {stat.ring && (
+              <div
+                className="h-9 w-9 rounded-full"
+                style={{ background: `conic-gradient(#c9652f ${Math.max(0, Math.min(100, accuracy))}%, rgba(0,0,0,.10) 0)` }}
+              >
+                <div className="m-1 h-7 w-7 rounded-full bg-[#fffaf2] dark:bg-[#211a2e]" />
+              </div>
+            )}
           </div>
-          <div className={`mt-1 text-lg font-semibold ${stat.label === 'Timer' && engineThinking ? 'animate-pulse text-amber-500' : ''}`}>
-            {stat.value}
-          </div>
+          <div className="mt-2 font-display text-xl font-bold">{stat.value}</div>
         </div>
       ))}
     </div>

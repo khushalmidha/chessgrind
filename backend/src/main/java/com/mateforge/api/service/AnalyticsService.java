@@ -2,21 +2,25 @@ package com.mateforge.api.service;
 
 import com.mateforge.api.dto.AnalyticsDtos.FavoriteDto;
 import com.mateforge.api.dto.AnalyticsDtos.FavoriteRequest;
+import com.mateforge.api.dto.AnalyticsDtos.AccuracyPointDto;
+import com.mateforge.api.dto.AnalyticsDtos.ModeBestTimeDto;
+import com.mateforge.api.dto.AnalyticsDtos.ModeDifficultyBreakdownDto;
+import com.mateforge.api.dto.AnalyticsDtos.ProfileDto;
 import com.mateforge.api.dto.AnalyticsDtos.ProgressSummary;
 import com.mateforge.api.dto.TrainingDtos.LeaderboardEntry;
 import com.mateforge.api.model.AppUser;
+import com.mateforge.api.model.Difficulty;
 import com.mateforge.api.model.FavoritePosition;
 import com.mateforge.api.model.SessionStatus;
 import com.mateforge.api.model.TrainingSession;
+import com.mateforge.api.model.TrainingMode;
 import com.mateforge.api.repository.AppUserRepository;
 import com.mateforge.api.repository.FavoritePositionRepository;
 import com.mateforge.api.repository.TrainingMoveRepository;
 import com.mateforge.api.repository.TrainingSessionRepository;
 import com.mateforge.api.security.UserPrincipal;
 import java.time.Duration;
-import java.util.Comparator;
 import java.util.List;
-import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,26 +43,55 @@ public class AnalyticsService {
         AppUser user = user(principal);
         List<TrainingSession> history = sessions.findTop20ByUserOrderByStartedAtDesc(user);
         double average = history.stream().mapToDouble(TrainingSession::getAccuracy).average().orElse(0);
+        // FIXED: users with no sessions must get a zero average instead of risking empty-stream arithmetic elsewhere.
         Integer bestTime = history.stream()
             .filter(session -> session.getStatus() == SessionStatus.CHECKMATE && session.getEndedAt() != null)
             .map(session -> (int) elapsedSeconds(session))
             .min(Integer::compareTo)
             .orElse(null);
         Rank rank = rankFor(user);
-        List<String> recentMistakes = history.stream()
-            .flatMap(session -> moves.findBySessionOrderByPlyAsc(session).stream())
+        List<String> recentMistakes = moves.findTop5BySessionUserAndEngineMoveFalseAndOptimalFalseOrderByPlayedAtDesc(user).stream()
             .filter(move -> !move.isEngineMove() && !move.isOptimal())
-            .limit(5)
             .map(move -> move.getUci() + ": " + move.getReason())
             .toList();
         return new ProgressSummary(user.getTotalCompleted(),
-            sessions.findByUserAndStatus(user, SessionStatus.ACTIVE).size(),
+            (int) sessions.countByUserAndStatus(user, SessionStatus.ACTIVE),
             user.getStreakDays(),
             Math.round(average * 100.0) / 100.0,
             rank.position(),
             rank.totalUsers(),
             bestTime,
             recentMistakes);
+    }
+
+    @Transactional(readOnly = true)
+    public ProfileDto profile(UserPrincipal principal) {
+        AppUser user = user(principal);
+        List<TrainingSession> recent = sessions.findTop20ByUserOrderByStartedAtDesc(user);
+        Rank rank = rankFor(user);
+        List<ModeBestTimeDto> bestTimes = sessions.bestTimesByMode(user.getId()).stream()
+            .map(row -> new ModeBestTimeDto(TrainingMode.valueOf(row.getMode()), row.getSeconds()))
+            .toList();
+        List<AccuracyPointDto> accuracyTrend = recent.reversed().stream()
+            .map(session -> new AccuracyPointDto(session.getStartedAt(), session.getAccuracy()))
+            .toList();
+        List<ModeDifficultyBreakdownDto> breakdown = sessions.modeDifficultyBreakdown(user.getId()).stream()
+            .map(row -> new ModeDifficultyBreakdownDto(TrainingMode.valueOf(row.getMode()), Difficulty.valueOf(row.getDifficulty()),
+                row.getSessionsPlayed(), Math.round(row.getAverageAccuracy() * 100.0) / 100.0))
+            .toList();
+        return new ProfileDto(
+            user.getUsername(),
+            user.getCreatedAt(),
+            sessions.countByUser(user),
+            user.getTotalCompleted(),
+            user.getStreakDays(),
+            bestTimes,
+            accuracyTrend,
+            breakdown,
+            favorites.countByUser(user),
+            rank.position(),
+            rank.totalUsers()
+        );
     }
 
     @Transactional
@@ -80,12 +113,9 @@ public class AnalyticsService {
 
     @Transactional(readOnly = true)
     public List<LeaderboardEntry> leaderboard() {
-        return sessions.findAll().stream()
-            .filter(session -> session.getStatus() == SessionStatus.CHECKMATE && session.getEndedAt() != null)
-            .sorted(Comparator.comparingLong(this::elapsedSeconds))
-            .limit(20)
-            .map(session -> new LeaderboardEntry(session.getUser().getUsername(), session.getMode(), session.getDifficulty(),
-                (int) elapsedSeconds(session), session.getAccuracy()))
+        return sessions.fastestCheckmates().stream()
+            .map(row -> new LeaderboardEntry(row.getUsername(), TrainingMode.valueOf(row.getMode()),
+                Difficulty.valueOf(row.getDifficulty()), row.getSeconds(), row.getAccuracy()))
             .toList();
     }
 
@@ -94,22 +124,13 @@ public class AnalyticsService {
     }
 
     private Rank rankFor(AppUser user) {
-        java.util.Map<UUID, Long> bestByUser = sessions.findAll().stream()
-            .filter(session -> session.getStatus() == SessionStatus.CHECKMATE && session.getEndedAt() != null && session.getUser() != null)
-            .collect(java.util.stream.Collectors.toMap(
-                session -> session.getUser().getId(),
-                this::elapsedSeconds,
-                Math::min
-            ));
-        List<java.util.Map.Entry<UUID, Long>> ranked = bestByUser.entrySet().stream()
-            .sorted(java.util.Map.Entry.comparingByValue())
-            .toList();
-        for (int i = 0; i < ranked.size(); i++) {
-            if (ranked.get(i).getKey().equals(user.getId())) {
-                return new Rank(i + 1, ranked.size());
-            }
+        long totalUsers = sessions.rankedUserCount();
+        Double bestSeconds = sessions.bestSecondsForUser(user.getId());
+        if (bestSeconds == null) {
+            return new Rank(0, Math.toIntExact(totalUsers));
         }
-        return new Rank(0, ranked.size());
+        long fasterUsers = sessions.countUsersFasterThan(bestSeconds);
+        return new Rank(Math.toIntExact(fasterUsers + 1), Math.toIntExact(totalUsers));
     }
 
     private record Rank(int position, int totalUsers) {

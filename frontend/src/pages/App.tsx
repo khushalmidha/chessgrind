@@ -1,24 +1,21 @@
 import { Chess } from 'chess.js';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronLeft, Moon, Play, Sun } from 'lucide-react';
+import { Dumbbell, Moon, Sun, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AuthPanel } from '../components/AuthPanel';
-import { AnalysisReview } from '../components/AnalysisReview';
-import { CoachNote } from '../components/CoachNote';
 import { ControlPanel } from '../components/ControlPanel';
 import { IconButton } from '../components/IconButton';
-import { ProfileSummary } from '../components/ProfileSummary';
-import { SessionFinishedBanner } from '../components/SessionFinishedBanner';
 import { StatStrip } from '../components/StatStrip';
 import { TrainingBoard } from '../components/TrainingBoard';
-import { TournamentPanel } from '../components/TournamentPanel';
+import { Profile } from './Profile';
 import { api, currentUser, token } from '../lib/api';
 import { boardStateLabel } from '../lib/chess';
 import { fallbackPuzzles } from '../lib/fallback';
-import type { AuthResponse, Difficulty, HintResponse, MoveDto, MoveResponse, ProgressSummary, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
+import type { AuthResponse, Difficulty, GameReportDto, HintResponse, MoveDto, PlayerProfileReportDto, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
 
 export function App() {
   const [dark, setDark] = useState(true);
+  const [route, setRoute] = useState<'profile' | 'train'>(() => window.location.pathname === '/profile' ? 'profile' : 'train');
   const [puzzles, setPuzzles] = useState<PuzzleDto[]>(fallbackPuzzles);
   const [mode, setMode] = useState<TrainingMode>('KING_ROOK_VS_KING');
   const [difficulty, setDifficulty] = useState<Difficulty>('BEGINNER');
@@ -27,17 +24,17 @@ export function App() {
   const [customFen, setCustomFen] = useState('');
   const [session, setSession] = useState<SessionDto>();
   const [user, setUser] = useState<AuthResponse | undefined>(() => currentUser());
-  const [progress, setProgress] = useState<ProgressSummary>();
-  const [view, setView] = useState<'home' | 'practice'>('home');
   const [displaySeconds, setDisplaySeconds] = useState(timeLimit);
   const [localFen, setLocalFen] = useState(fallbackPuzzles[0].fen);
   const [hint, setHint] = useState<HintResponse>();
   const [solution, setSolution] = useState<MoveDto[]>([]);
-  const [coachReview, setCoachReview] = useState<MoveResponse>();
+  const [gameReport, setGameReport] = useState<GameReportDto>();
+  const [profileReport, setProfileReport] = useState<PlayerProfileReportDto>();
+  const [reportLoading, setReportLoading] = useState<'session' | 'profile'>();
+  const [reportError, setReportError] = useState('');
+  const [reportsUnavailable, setReportsUnavailable] = useState(false);
   const [solutionIndex, setSolutionIndex] = useState(0);
   const [busy, setBusy] = useState(false);
-  // engineThinking pauses the user clock while Stockfish calculates its reply
-  const [engineThinking, setEngineThinking] = useState(false);
   const [notice, setNotice] = useState('Ready for a clean mate.');
 
   useEffect(() => {
@@ -45,45 +42,36 @@ export function App() {
   }, [dark]);
 
   useEffect(() => {
-    api.puzzles().then(setPuzzles).catch(() => setPuzzles(fallbackPuzzles));
+    const onPopState = () => setRoute(window.location.pathname === '/profile' ? 'profile' : 'train');
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   useEffect(() => {
-    const match = window.location.pathname.match(/^\/tournament\/([A-Z0-9]+)/i);
-    if (match) {
-      setView('home');
-      setNotice(`Tournament invite detected: ${match[1].toUpperCase()}. Sign in and join from the tournament panel.`);
-    }
+    api.puzzles().then(setPuzzles).catch((error) => {
+      setPuzzles(fallbackPuzzles);
+      setNotice(error instanceof Error ? `${error.message}. Loaded local fallback puzzles.` : 'Loaded local fallback puzzles.');
+      // FIXED: puzzle API failures were silently swallowed into fallback data with no user-visible error.
+    });
   }, []);
 
   useEffect(() => {
-    if (!user || !token()) {
-      setProgress(undefined);
-      return;
-    }
-    api.progress().then(setProgress).catch(() => setProgress(undefined));
-  }, [user]);
-
-  // The user clock only ticks when:
-  //  - there is an ACTIVE session
-  //  - a timer mode other than NONE is selected
-  //  - it is the user's turn (engine is NOT thinking)
-  // This guarantees Stockfish thinking time never reduces the player's clock.
-  useEffect(() => {
-    if (!session || session.status !== 'ACTIVE' || timerMode === 'NONE' || engineThinking) return;
+    if (!session || session.status !== 'ACTIVE' || session.timerMode === 'NONE') return;
+    setDisplaySeconds(session.remainingSeconds);
     const id = window.setInterval(() => {
       setDisplaySeconds((seconds) => {
         if (seconds <= 1) {
           window.clearInterval(id);
           setNotice('Time expired. Analyze the optimal mating line.');
           setSession((current) => current ? { ...current, status: 'TIMEOUT', remainingSeconds: 0 } : current);
+          // FIXED: local timeout now stops the active session immediately so stale UI cannot keep submitting moves.
           return 0;
         }
         return seconds - 1;
       });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [session?.id, session?.status, timerMode, engineThinking]);
+  }, [session?.id, session?.status, session?.timerMode, session?.remainingSeconds]);
 
   useEffect(() => {
     if (!session) {
@@ -104,7 +92,6 @@ export function App() {
   const fen = session?.currentFen ?? (mode === 'CUSTOM' && customFen ? customFen : localFen);
   const state = boardStateLabel(session);
   const solutionMove = solution[solutionIndex];
-  const solutionStep = solution.length > 0 ? `${solutionIndex + 1} / ${solution.length}` : '';
 
   async function start() {
     if (!token() || !user) {
@@ -114,7 +101,9 @@ export function App() {
     setBusy(true);
     setHint(undefined);
     setSolution([]);
-    setCoachReview(undefined);
+    setGameReport(undefined);
+    setProfileReport(undefined);
+    setReportError('');
     setSolutionIndex(0);
     try {
       const currentPuzzle = mode === 'CUSTOM' ? undefined : selectedPuzzle;
@@ -145,33 +134,26 @@ export function App() {
 
   async function move(uciMove: string) {
     setHint(undefined);
+    setGameReport(undefined);
+    setProfileReport(undefined);
+    setReportError('');
     if (session) {
-      // Pause the user clock immediately – Stockfish is now thinking
-      setEngineThinking(true);
+      if (session.status !== 'ACTIVE' || (session.timerMode !== 'NONE' && displaySeconds <= 0)) {
+        setNotice('Time expired. Analyze the optimal mating line.');
+        setSession((current) => current ? { ...current, status: 'TIMEOUT', remainingSeconds: 0 } : current);
+        return false;
+        // FIXED: moves could still be submitted after the client countdown reached zero.
+      }
       try {
         const response = await api.move(session.id, uciMove);
-        const terminalStatus = response.checkmate
-          ? 'CHECKMATE'
-          : response.stalemate
-            ? 'STALEMATE'
-            : response.gameState === 'draw'
-              ? 'DRAW'
-              : response.session.status;
-        // Preserve the locally-tracked displaySeconds so the clock is not
-        // reset to the server value (which was frozen at session start).
-        setSession({ ...response.session, status: terminalStatus, remainingSeconds: displaySeconds });
-        setCoachReview(response);
+        setSession(response.session);
+        setDisplaySeconds(response.session.remainingSeconds);
+        // FIXED: server-confirmed remaining time was overwritten by a stale local timer value after each move.
         setNotice(response.message);
-        if (terminalStatus !== 'ACTIVE') {
-          api.progress().then(setProgress).catch(() => undefined);
-        }
         return true;
       } catch (error) {
         setNotice(error instanceof Error ? error.message : 'Illegal move');
         return false;
-      } finally {
-        // Resume the user clock now that it is the player's turn again
-        setEngineThinking(false);
       }
     }
     try {
@@ -227,34 +209,51 @@ export function App() {
     }
   }
 
-  async function practiceAgain() {
+  async function requestReport(refresh = false) {
     if (!session) return;
-    setCustomFen(session.startFen);
-    setMode('CUSTOM');
-    setSolution([]);
-    setCoachReview(undefined);
-    setSolutionIndex(0);
-    setBusy(true);
+    setReportLoading('session');
+    setReportError('');
+    setProfileReport(undefined);
     try {
-      const restarted = await api.startSession({
-        mode: 'CUSTOM',
-        difficulty: session.difficulty,
-        timerMode: session.timerMode,
-        timeLimitSeconds: timeLimit,
-        incrementSeconds: 0,
-        hintsEnabled: true,
-        takebacksEnabled: true,
-        customFen: session.startFen,
-      });
-      setSession(restarted);
-      setDisplaySeconds(restarted.remainingSeconds);
-      setLocalFen(restarted.currentFen);
-      setNotice('Practice restarted from the same position.');
+      const response = await api.report(session.id, refresh);
+      setGameReport(response);
+      setNotice('Performance report ready.');
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not restart practice');
+      handleReportError(error);
     } finally {
-      setBusy(false);
+      setReportLoading(undefined);
     }
+  }
+
+  async function requestProfileReport(refresh = false) {
+    if (!token() || !user) {
+      setNotice('Sign in first to generate a profile report.');
+      return;
+    }
+    setReportLoading('profile');
+    setReportError('');
+    setGameReport(undefined);
+    try {
+      const response = await api.profileReport(refresh);
+      setProfileReport(response);
+      setNotice('Player profile ready.');
+    } catch (error) {
+      handleReportError(error);
+    } finally {
+      setReportLoading(undefined);
+    }
+  }
+
+  function handleReportError(error: unknown) {
+    const message = error instanceof Error ? error.message : '';
+    const friendly = message.includes('Gemini') || message.includes('AI reports') || message.includes('AI report')
+      ? 'AI reports are not available on this server right now.'
+      : 'Could not generate the report. Training still works normally.';
+    if (friendly.includes('not available')) {
+      setReportsUnavailable(true);
+    }
+    setReportError(friendly);
+    setNotice(friendly);
   }
 
   function reset() {
@@ -262,126 +261,85 @@ export function App() {
     setDisplaySeconds(timerMode === 'NONE' ? 0 : timeLimit);
     setHint(undefined);
     setSolution([]);
-    setCoachReview(undefined);
+    setGameReport(undefined);
+    setProfileReport(undefined);
+    setReportError('');
     setSolutionIndex(0);
     setLocalFen(mode === 'CUSTOM' && customFen ? customFen : selectedPuzzle.fen);
     setNotice('Board reset.');
   }
 
-  const topBar = (
-    <header className="sticky top-0 z-20 border-b border-black/10 bg-[#f4f6f0]/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-[#10130f]/95">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-        <button type="button" onClick={() => setView('home')} className="text-left">
-          <div className="text-xl font-black">ChessGrind</div>
-          <div className="text-xs text-black/50 dark:text-white/50">MateForge training</div>
-        </button>
-        <div className="flex items-center gap-2">
-          <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
-        </div>
-      </div>
-    </header>
-  );
+  function navigate(nextRoute: 'train' | 'profile') {
+    const path = nextRoute === 'profile' ? '/profile' : '/';
+    window.history.pushState({}, '', path);
+    setRoute(nextRoute);
+  }
 
-  if (view === 'home') {
+  if (route === 'profile') {
     return (
-      <main className="min-h-screen bg-[#f4f6f0] text-ink transition dark:bg-[#10130f] dark:text-white">
-        {topBar}
-        <div className="mx-auto grid max-w-7xl gap-5 px-4 py-6 lg:grid-cols-[1fr_380px]">
-          <section className="grid content-start gap-5">
-            <div className="rounded-md border border-black/10 bg-white/80 p-5 dark:border-white/10 dark:bg-white/10">
-              <div className="text-sm font-semibold uppercase text-moss">Checkmate practice</div>
-              <h1 className="mt-2 text-4xl font-black">Train technical mates against best defense.</h1>
-              <p className="mt-3 max-w-2xl text-black/60 dark:text-white/60">
-                Pick an endgame, beat the clock, and review the optimal mating line after each attempt.
-              </p>
-              <button
-                type="button"
-                onClick={() => setView('practice')}
-                className="mt-5 inline-flex items-center gap-2 rounded-md bg-moss px-5 py-3 font-bold text-white"
-              >
-                <Play size={20} />
-                Open Checkmate Practice
-              </button>
+      <main className="min-h-screen text-ink transition dark:text-white">
+        <div className="mx-auto grid max-w-7xl gap-5 px-4 py-4">
+          <div className="mf-panel flex flex-wrap items-center justify-between gap-3 rounded-forge p-3">
+            <div className="flex items-center gap-3">
+              <div className="mf-wordmark-mark flex h-10 w-10 items-center justify-center rounded-tool font-display text-lg font-bold text-white">M</div>
+              <div>
+                <div className="font-display text-sm font-bold uppercase text-copper dark:text-ember">Profile</div>
+                <div className="text-sm text-black/55 dark:text-white/55">{notice}</div>
+              </div>
             </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {['King + rook basics', 'Queen net speed', 'Bishop + knight control'].map((title) => (
-                <button key={title} type="button" onClick={() => setView('practice')} className="rounded-md border border-black/10 bg-white/75 p-4 text-left transition hover:border-moss dark:border-white/10 dark:bg-white/10">
-                  <div className="font-bold">{title}</div>
-                  <div className="mt-2 text-sm text-black/55 dark:text-white/55">Start a focused mating drill.</div>
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <IconButton icon={<Dumbbell size={18} />} label="Training" onClick={() => navigate('train')} />
+              <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
             </div>
-          </section>
-          <aside className="grid content-start gap-4">
-            <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
-            <ProfileSummary user={user} progress={progress} />
-            <TournamentPanel signedIn={Boolean(user && token())} onNotice={setNotice} />
-          </aside>
+          </div>
+          {!token() || !user ? (
+            <div className="mx-auto w-full max-w-md">
+              <div className="mf-panel mb-3 rounded-forge p-4 text-sm">
+                Sign in to view your profile.
+              </div>
+              <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
+            </div>
+          ) : (
+            <Profile onNotice={setNotice} />
+          )}
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f6f0] text-ink transition dark:bg-[#10130f] dark:text-white">
-      {topBar}
-      <div className="mx-auto grid min-h-screen max-w-7xl gap-5 px-4 py-4 lg:grid-cols-[minmax(320px,1fr)_380px]">
+    <main className="min-h-screen text-ink transition dark:text-white">
+      <div className="mx-auto grid min-h-screen max-w-7xl gap-5 px-4 py-4 lg:grid-cols-[minmax(320px,1fr)_390px]">
         <section className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-black/10 bg-white/80 p-3 dark:border-white/10 dark:bg-white/10">
-            <div>
-              <div className="text-sm font-semibold uppercase tracking-wide text-moss">{state}</div>
-              <div className="text-sm text-black/55 dark:text-white/55">{notice}</div>
+          <div className="mf-panel flex flex-wrap items-center justify-between gap-3 rounded-forge p-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="mf-wordmark-mark flex h-11 w-11 shrink-0 items-center justify-center rounded-tool font-display text-lg font-bold text-white">M</div>
+              <div className="min-w-0">
+                <div className="mf-wordmark text-xl font-bold">MateForge</div>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-display font-bold uppercase text-copper dark:text-ember">{state}</span>
+                  <span className="text-black/50 dark:text-white/55">{notice}</span>
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {solution.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-ember">{solutionStep}</span>
-                  <button type="button" className="rounded-md border border-black/10 px-3 py-2 text-sm font-semibold dark:border-white/10" onClick={() => setSolutionIndex(Math.max(0, solutionIndex - 1))}>Prev</button>
-                  <button type="button" className="rounded-md border border-black/10 px-3 py-2 text-sm font-semibold dark:border-white/10" onClick={() => setSolutionIndex(Math.min(solution.length - 1, solutionIndex + 1))}>Next</button>
+                  <button type="button" className="rounded-tool border border-black/10 bg-white/70 px-3 py-2 text-sm font-semibold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember" onClick={() => setSolutionIndex(Math.max(0, solutionIndex - 1))}>Prev</button>
+                  <button type="button" className="rounded-tool border border-black/10 bg-white/70 px-3 py-2 text-sm font-semibold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember" onClick={() => setSolutionIndex(Math.min(solution.length - 1, solutionIndex + 1))}>Next</button>
                 </div>
               )}
-              <button type="button" onClick={() => setView('home')} className="inline-flex items-center gap-2 rounded-md border border-black/10 px-3 py-2 text-sm font-semibold dark:border-white/10">
-                <ChevronLeft size={17} />
-                Dashboard
-              </button>
+              <IconButton icon={<UserRound size={18} />} label="Profile" onClick={() => navigate('profile')} />
+              <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
             </div>
           </div>
 
-          <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} engineThinking={engineThinking} />
-          <SessionFinishedBanner session={session} onPracticeAgain={practiceAgain} onAnalyze={analyze} />
-          <AnalysisReview solution={solution} session={session} index={solutionIndex} onIndex={setSolutionIndex} />
-          <CoachNote review={coachReview} />
-          {solutionMove && (
-            <section className="rounded-md border border-ember/40 bg-ember/10 p-4 shadow-sm">
-              <div className="text-xs font-black uppercase tracking-wide text-ember">Best Move</div>
-              <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <div className="text-4xl font-black text-ink dark:text-white">{solutionMove.san || solutionMove.uci}</div>
-                  <div className="mt-1 text-sm font-semibold text-black/60 dark:text-white/65">
-                    Move {solutionStep}: {solutionMove.uci.slice(0, 2)} to {solutionMove.uci.slice(2, 4)}
-                  </div>
-                </div>
-                <div className="rounded-md bg-white/75 px-3 py-2 text-sm font-bold text-ember dark:bg-black/25">
-                  Follow the arrow on the board
-                </div>
-              </div>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-black/65 dark:text-white/70">{solutionMove.reason}</p>
-            </section>
-          )}
+          <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
           <TrainingBoard fen={solutionMove?.fenAfter ?? fen} session={session} hint={hint} solutionMove={solutionMove} onMove={move} />
         </section>
 
         <AnimatePresence mode="wait">
           <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}>
-            <div className="mb-4">
-              <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
-            </div>
-            <div className="mb-4">
-              <ProfileSummary user={user} progress={progress} />
-            </div>
-            <div className="mb-4">
-              <TournamentPanel signedIn={Boolean(user && token())} onNotice={setNotice} />
-            </div>
             <ControlPanel
               puzzles={puzzles}
               mode={mode}
@@ -390,6 +348,11 @@ export function App() {
               timeLimit={timeLimit}
               session={session ? { ...session, remainingSeconds: displaySeconds } : undefined}
               hint={hint}
+              gameReport={gameReport}
+              profileReport={profileReport}
+              reportLoading={reportLoading}
+              reportError={reportError}
+              reportsUnavailable={reportsUnavailable}
               busy={busy}
               customFen={customFen}
               onMode={setMode}
@@ -402,7 +365,12 @@ export function App() {
               onHint={requestHint}
               onUndo={undo}
               onAnalyze={analyze}
+              onReport={requestReport}
+              onProfileReport={requestProfileReport}
             />
+            <div className="mt-4">
+              <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
+            </div>
           </motion.div>
         </AnimatePresence>
       </div>

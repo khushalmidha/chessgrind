@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface FavoritePositionRepository extends JpaRepository<FavoritePosition, UUID> {
     List<FavoritePosition> findByUserOrderByCreatedAtDesc(AppUser user);
+
+    long countByUser(AppUser user);
 }
