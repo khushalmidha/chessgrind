@@ -11,7 +11,7 @@ import { Profile } from './Profile';
 import { api, currentUser, onAuthExpired, token } from '../lib/api';
 import { boardStateLabel } from '../lib/chess';
 import { fallbackPuzzles } from '../lib/fallback';
-import type { AuthResponse, Difficulty, GameReportDto, HintResponse, MoveDto, PlayerProfileReportDto, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
+import type { AuthResponse, Difficulty, GameReportDto, HintResponse, MoveDto, PlayerProfileReportDto, PuzzleDto, SessionDto, SessionStatus, TimerMode, TrainingMode } from '../types/api';
 
 export function App() {
   const [dark, setDark] = useState(true);
@@ -107,6 +107,7 @@ export function App() {
   const state = boardStateLabel(session);
   const solutionMove = solution[solutionIndex];
   const analysisArrows = solution.slice(solutionIndex, solutionIndex + 2);
+  const reviewMode = solution.length > 0;
 
   async function start() {
     if (!token() || !user) {
@@ -220,9 +221,13 @@ export function App() {
     if (!session) return false;
     try {
       const chess = new Chess(session.currentFen);
+      if (chess.turn() !== 'w') {
+        setNotice('The defender is thinking; make the attacking move after black replies.');
+        return false;
+      }
       const result = chess.move({ from: uciMove.slice(0, 2), to: uciMove.slice(2, 4), promotion: uciMove[4] ?? 'q' });
       if (!result) return false;
-      const status = chess.isCheckmate() ? 'CHECKMATE' : chess.isStalemate() ? 'STALEMATE' : chess.isDraw() ? 'DRAW' : 'ACTIVE';
+      let status: SessionStatus = chess.isCheckmate() ? 'CHECKMATE' : chess.isStalemate() ? 'STALEMATE' : chess.isDraw() ? 'DRAW' : 'ACTIVE';
       const moveDto: MoveDto = {
         ply: session.moves.length + 1,
         uci: uciMove,
@@ -232,16 +237,35 @@ export function App() {
         optimal: true,
         reason: 'Local practice move; engine scoring is available when the backend is connected.',
       };
+      const nextMoves = [...session.moves, moveDto];
+      if (status === 'ACTIVE' && chess.turn() === 'b') {
+        const defense = chess.moves({ verbose: true })[0];
+        if (defense) {
+          const defenseUci = `${defense.from}${defense.to}${defense.promotion ?? ''}`;
+          chess.move(defense);
+          status = chess.isCheckmate() ? 'CHECKMATE' : chess.isStalemate() ? 'STALEMATE' : chess.isDraw() ? 'DRAW' : 'ACTIVE';
+          nextMoves.push({
+            ply: nextMoves.length + 1,
+            uci: defenseUci,
+            san: defense.san,
+            fenAfter: chess.fen(),
+            engineMove: true,
+            optimal: true,
+            reason: 'Local defender reply. Connected sessions use Stockfish for the strongest defense.',
+          });
+          // FIXED: local fallback let the user move both sides; black now auto-replies during timed practice.
+        }
+      }
       setSession({
         ...session,
         currentFen: chess.fen(),
         status,
         remainingSeconds: displaySeconds,
         endedAt: status === 'ACTIVE' ? undefined : new Date().toISOString(),
-        moves: [...session.moves, moveDto],
+        moves: nextMoves,
       });
       setLocalFen(chess.fen());
-      setNotice(status === 'CHECKMATE' ? 'Checkmate.' : status === 'STALEMATE' ? 'Stalemate.' : status === 'DRAW' ? 'Draw.' : 'Move accepted locally.');
+      setNotice(status === 'CHECKMATE' ? 'Checkmate.' : status === 'STALEMATE' ? 'Stalemate.' : status === 'DRAW' ? 'Draw.' : 'Move accepted locally. Black replied.');
       return true;
     } catch {
       setNotice('Illegal move in this position.');
@@ -469,7 +493,7 @@ export function App() {
           </div>
 
           <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
-          <TrainingBoard fen={solutionMove?.fenAfter ?? fen} session={session} hint={hint} solutionMove={solutionMove} analysisMoves={analysisArrows} onMove={move} />
+          <TrainingBoard fen={solutionMove?.fenAfter ?? fen} session={session} hint={hint} solutionMove={solutionMove} analysisMoves={analysisArrows} reviewMode={reviewMode} onMove={move} />
         </section>
 
         <AnimatePresence mode="wait">

@@ -11,16 +11,18 @@ interface Props {
   hint?: HintResponse;
   solutionMove?: MoveDto;
   analysisMoves?: MoveDto[];
+  reviewMode?: boolean;
   onMove: (uciMove: string) => Promise<boolean>;
 }
 
-export function TrainingBoard({ fen, session, hint, solutionMove, analysisMoves = [], onMove }: Props) {
+export function TrainingBoard({ fen, session, hint, solutionMove, analysisMoves = [], reviewMode = false, onMove }: Props) {
   const [selected, setSelected] = useState<string>();
-  const legalSquares = useMemo(() => (selected ? legalDestinations(fen, selected) : []), [fen, selected]);
-  const lastMove = session?.moves[session.moves.length - 1]?.uci;
+  const canMove = !reviewMode && (!session || session.status === 'ACTIVE') && new Chess(fen).turn() === 'w';
+  const legalSquares = useMemo(() => (selected && canMove ? legalDestinations(fen, selected) : []), [canMove, fen, selected]);
+  const highlightedMoves = (session?.moves ?? []).slice(-2).map((move) => move.uci);
   // FIXED: analysis replay only drew one side's move because the board accepted a single solution move.
   const solutionArrows = analysisMoves.length > 0 ? analysisMoves.flatMap((move) => arrowFromMove(move)) : arrowFromMove(solutionMove);
-  const arrows = [...arrowFromMove(lastMove), ...arrowFromMove(hint?.bestMove), ...solutionArrows] as never;
+  const arrows = (reviewMode ? solutionArrows : []) as never;
 
   const customSquareStyles = useMemo(() => {
     const styles: Record<string, CSSProperties> = {};
@@ -32,9 +34,18 @@ export function TrainingBoard({ fen, session, hint, solutionMove, analysisMoves 
         background: 'radial-gradient(circle, rgba(21,23,19,.28) 18%, transparent 20%)',
       };
     }
-    if (lastMove && lastMove.length >= 4) {
-      styles[lastMove.slice(0, 2)] = { backgroundColor: 'rgba(246,160,77,.38)' };
-      styles[lastMove.slice(2, 4)] = { backgroundColor: 'rgba(246,160,77,.48)' };
+    highlightedMoves.forEach((move, index) => {
+      if (move.length >= 4) {
+        const fromColor = index === highlightedMoves.length - 1 ? 'rgba(246,160,77,.38)' : 'rgba(124,58,237,.25)';
+        const toColor = index === highlightedMoves.length - 1 ? 'rgba(246,160,77,.50)' : 'rgba(124,58,237,.34)';
+        styles[move.slice(0, 2)] = { backgroundColor: fromColor };
+        styles[move.slice(2, 4)] = { backgroundColor: toColor };
+      }
+    });
+    if (reviewMode && solutionMove?.uci && solutionMove.uci.length >= 4) {
+      styles[solutionMove.uci.slice(0, 2)] = { backgroundColor: 'rgba(59,130,246,.30)' };
+      styles[solutionMove.uci.slice(2, 4)] = { backgroundColor: 'rgba(59,130,246,.42)' };
+      // FIXED: review mode now marks initial and final squares with color instead of relying only on arrows.
     }
     const chess = new Chess(fen);
     if (chess.inCheck()) {
@@ -47,7 +58,7 @@ export function TrainingBoard({ fen, session, hint, solutionMove, analysisMoves 
       }
     }
     return styles;
-  }, [fen, legalSquares, lastMove, selected]);
+  }, [fen, highlightedMoves, legalSquares, reviewMode, selected, solutionMove]);
 
   return (
     <div className="mx-auto w-full max-w-[min(86vh,720px)]">
@@ -60,13 +71,21 @@ export function TrainingBoard({ fen, session, hint, solutionMove, analysisMoves 
           customLightSquareStyle={{ backgroundColor: '#ead8b7' }}
           customSquareStyles={customSquareStyles}
           customArrows={arrows}
-          arePremovesAllowed
+          arePremovesAllowed={false}
           animationDuration={180}
           onPieceDrop={(from, to) => {
+            if (!canMove) return false;
+            const chess = new Chess(fen);
+            if (chess.get(from as never)?.color !== 'w') return false;
             void onMove(uci(from, to));
             return false;
+            // FIXED: users could drag defender pieces during their timer turn, sending illegal black moves to the API.
           }}
           onSquareClick={async (square) => {
+            if (!canMove) return;
+            const chess = new Chess(fen);
+            const piece = chess.get(square as never);
+            if (!selected && piece?.color !== 'w') return;
             if (!selected) {
               setSelected(square);
               return;

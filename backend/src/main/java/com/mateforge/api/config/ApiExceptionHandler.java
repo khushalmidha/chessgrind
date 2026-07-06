@@ -3,8 +3,11 @@ package com.mateforge.api.config;
 import com.mateforge.api.service.ApiException;
 import java.time.Instant;
 import java.util.Map;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -23,6 +26,22 @@ public class ApiExceptionHandler {
             .map(error -> error.getField() + " " + error.getDefaultMessage())
             .orElse("Validation failed");
         return ResponseEntity.badRequest().body(error(HttpStatus.BAD_REQUEST, message));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<Map<String, Object>> handleMalformedJson(HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest().body(error(HttpStatus.BAD_REQUEST, "Invalid request body"));
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    ResponseEntity<Map<String, Object>> handleAuthentication(AuthenticationException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error(HttpStatus.UNAUTHORIZED, "Please sign in again"));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error(HttpStatus.CONFLICT, "That record already exists or violates a database constraint"));
+        // FIXED: database uniqueness/constraint failures surfaced to the website as generic 500 errors.
     }
 
     @ExceptionHandler(RuntimeException.class)

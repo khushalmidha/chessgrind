@@ -319,11 +319,15 @@ public class TrainingService {
     }
 
     private TrainingSession ownedSession(UUID id, UserPrincipal principal) {
+        if (principal == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again");
+        }
         TrainingSession session = sessions.findById(id).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Session not found"));
         if (!session.getUser().getId().equals(principal.id())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "You do not own this session");
         }
         return session;
+        // FIXED: stale auth on existing-session endpoints could dereference a null principal and return 500.
     }
 
     private AppUser user(UserPrincipal principal) {
