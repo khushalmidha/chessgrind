@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Dumbbell, LogOut, Moon, Sun, UserRound } from 'lucide-react';
+import { Dumbbell, LogOut, Moon, Sun, Trophy, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AuthPanel } from '../components/AuthPanel';
 import { ControlPanel } from '../components/ControlPanel';
@@ -8,6 +8,7 @@ import { IconButton } from '../components/IconButton';
 import { StatStrip } from '../components/StatStrip';
 import { TrainingBoard } from '../components/TrainingBoard';
 import { Profile } from './Profile';
+import { TournamentPage } from './TournamentPage';
 import { api, currentUser, onAuthExpired, token } from '../lib/api';
 import { boardStateLabel } from '../lib/chess';
 import { fallbackPuzzles } from '../lib/fallback';
@@ -15,7 +16,7 @@ import type { AuthResponse, Difficulty, GameReportDto, HintResponse, MoveDto, Pl
 
 export function App() {
   const [dark, setDark] = useState(true);
-  const [route, setRoute] = useState<'profile' | 'train'>(() => window.location.pathname === '/play' ? 'train' : 'profile');
+  const [route, setRoute] = useState<'profile' | 'train' | 'tournament'>(() => initialRoute());
   const [puzzles, setPuzzles] = useState<PuzzleDto[]>(fallbackPuzzles);
   const [mode, setMode] = useState<TrainingMode>('KING_ROOK_VS_KING');
   const [difficulty, setDifficulty] = useState<Difficulty>('BEGINNER');
@@ -42,7 +43,7 @@ export function App() {
   }, [dark]);
 
   useEffect(() => {
-    const onPopState = () => setRoute(window.location.pathname === '/play' ? 'train' : 'profile');
+    const onPopState = () => setRoute(initialRoute());
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -373,8 +374,8 @@ export function App() {
     setNotice('Board reset.');
   }
 
-  function navigate(nextRoute: 'train' | 'profile') {
-    const path = nextRoute === 'profile' ? '/profile' : '/play';
+  function navigate(nextRoute: 'train' | 'profile' | 'tournament') {
+    const path = nextRoute === 'profile' ? '/profile' : nextRoute === 'tournament' ? '/tournaments' : '/play';
     window.history.pushState({}, '', path);
     setRoute(nextRoute);
   }
@@ -447,6 +448,7 @@ export function App() {
             <div className="flex items-center gap-2">
               {accountChip()}
               <IconButton icon={<Dumbbell size={18} />} label="Training" onClick={() => navigate('train')} />
+              <IconButton icon={<Trophy size={18} />} label="Host tournament" onClick={() => navigate('tournament')} />
               <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
             </div>
           </div>
@@ -459,6 +461,39 @@ export function App() {
             </div>
           ) : (
             <Profile onNotice={setNotice} onPlay={playFromProfile} />
+          )}
+        </div>
+      </main>
+    );
+  }
+
+  if (route === 'tournament') {
+    const code = window.location.pathname.startsWith('/tournament/') ? window.location.pathname.split('/').filter(Boolean)[1] : undefined;
+    return (
+      <main className="min-h-screen text-ink transition dark:text-white">
+        <div className="mx-auto grid max-w-7xl gap-5 px-4 py-4">
+          <div className="mf-panel flex flex-wrap items-center justify-between gap-3 rounded-forge p-3">
+            <div className="flex items-center gap-3">
+              <div className="mf-wordmark-mark flex h-10 w-10 items-center justify-center rounded-tool font-display text-lg font-bold text-white">M</div>
+              <div>
+                <div className="font-display text-sm font-bold uppercase text-copper dark:text-ember">Tournaments</div>
+                <div className="text-sm text-black/55 dark:text-white/55">{notice}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {accountChip()}
+              <IconButton icon={<UserRound size={18} />} label="Profile" onClick={() => navigate('profile')} />
+              <IconButton icon={<Dumbbell size={18} />} label="Training" onClick={() => navigate('train')} />
+              <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
+            </div>
+          </div>
+          {!token() || !user ? (
+            <div className="mx-auto w-full max-w-md">
+              <div className="mf-panel mb-3 rounded-forge p-4 text-sm">Sign in to host or join tournaments.</div>
+              <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
+            </div>
+          ) : (
+            <TournamentPage code={code} onNotice={setNotice} />
           )}
         </div>
       </main>
@@ -488,6 +523,7 @@ export function App() {
                 </div>
               )}
               {accountChip()}
+              <IconButton icon={<Trophy size={18} />} label="Host tournament" onClick={() => navigate('tournament')} />
               <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
             </div>
           </div>
@@ -536,4 +572,10 @@ export function App() {
       </div>
     </main>
   );
+}
+
+function initialRoute(): 'profile' | 'train' | 'tournament' {
+  if (window.location.pathname === '/play') return 'train';
+  if (window.location.pathname === '/tournaments' || window.location.pathname.startsWith('/tournament/')) return 'tournament';
+  return 'profile';
 }

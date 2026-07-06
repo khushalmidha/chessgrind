@@ -10,6 +10,11 @@ import type {
   SessionDto,
   SolutionResponse,
   StartSessionRequest,
+  CreateTournamentRequest,
+  SubmitTournamentResultRequest,
+  TournamentDetailDto,
+  TournamentDto,
+  StandingDto,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -118,4 +123,12 @@ export const api = {
   profileReport: (refresh = false) =>
     request<PlayerProfileReportDto>(`/api/analytics/profile-report?refresh=${refresh ? 'true' : 'false'}`),
   favorites: () => request<FavoriteDto[]>('/api/favorites'),
+  createTournament: (payload: CreateTournamentRequest) =>
+    request<TournamentDetailDto>('/api/tournaments', { method: 'POST', body: JSON.stringify(payload) }),
+  myTournaments: () => request<TournamentDto[]>('/api/tournaments'),
+  tournament: (code: string) => request<TournamentDetailDto>(`/api/tournaments/${code}`),
+  joinTournament: (code: string) => request<TournamentDetailDto>(`/api/tournaments/${code}/join`, { method: 'POST' }),
+  standings: (code: string) => request<StandingDto[]>(`/api/tournaments/${code}/standings`),
+  submitTournamentResult: (code: string, payload: SubmitTournamentResultRequest) =>
+    request<TournamentDetailDto>(`/api/tournaments/${code}/results`, { method: 'POST', body: JSON.stringify(payload) }),
 };

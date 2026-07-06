@@ -162,3 +162,45 @@ export interface ProfileDto {
   leaderboardRank: number;
   totalRankedUsers: number;
 }
+
+export interface CreateTournamentRequest {
+  name: string;
+  mode: TrainingMode;
+  difficulty: Difficulty;
+  rounds: number;
+  scheduledStartAt: string;
+}
+
+export interface SubmitTournamentResultRequest {
+  roundNumber: number;
+  accuracy: number;
+  timeSeconds: number;
+  hintsUsed: number;
+}
+
+export interface TournamentDto {
+  code: string;
+  name: string;
+  hostUsername: string;
+  mode: TrainingMode;
+  difficulty: Difficulty;
+  rounds: number;
+  scheduledStartAt: string;
+  status: 'LOBBY' | 'LIVE' | string;
+  joined: boolean;
+  joinUrl: string;
+  participantCount: number;
+}
+
+export interface StandingDto {
+  username: string;
+  completedRounds: number;
+  totalPoints: number;
+  averageAccuracy: number;
+  totalTimeSeconds: number;
+}
+
+export interface TournamentDetailDto {
+  tournament: TournamentDto;
+  standings: StandingDto[];
+}

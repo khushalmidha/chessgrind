@@ -15,11 +15,14 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class EngineService {
+    private static final Logger log = LoggerFactory.getLogger(EngineService.class);
     private final String stockfishPath;
     private final int moveTimeMs;
     private final int lineDepth;
@@ -48,6 +51,7 @@ public class EngineService {
         if (fallback) {
             Board board = rules.board(fen);
             best = fallbackMove(board);
+            log.warn("Stockfish returned no usable move for fen '{}'; falling back to '{}'", fen, best);
         }
         return new EngineMove(best, fallback ? "Engine unavailable or timed out; using the first legal move as a safe fallback." : reasonFor(best, fen));
         // FIXED: a missing or hung Stockfish process previously failed silently with no clear reason for fallback moves.
@@ -92,6 +96,7 @@ public class EngineService {
             }
             resetEngine();
         } catch (IOException ignored) {
+            log.warn("Stockfish request failed for command '{}' using path '{}': {}", goCommand, stockfishPath, ignored.getMessage());
             resetEngine();
             return null;
         } finally {
@@ -121,6 +126,7 @@ public class EngineService {
             return;
         }
         resetEngine();
+        log.info("Starting Stockfish from '{}'", stockfishPath);
         engineProcess = new ProcessBuilder(stockfishPath).redirectErrorStream(true).start();
         engineWriter = new BufferedWriter(new OutputStreamWriter(engineProcess.getOutputStream(), StandardCharsets.UTF_8));
         engineReader = new BufferedReader(new InputStreamReader(engineProcess.getInputStream(), StandardCharsets.UTF_8));

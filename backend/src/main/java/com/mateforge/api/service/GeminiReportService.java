@@ -99,6 +99,11 @@ public class GeminiReportService {
             .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
         // FIXED: stale profile-report auth could produce a generic 500 before user lookup.
         List<TrainingSession> history = sessions.findTop20ByUserOrderByStartedAtDesc(user);
+        if (history.isEmpty()) {
+            return new PlayerProfileReportDto("Unrated", "Play a few Mateforge sessions to build a coaching profile.",
+                List.of(), List.of(), "Not enough session data yet.", List.of("Complete one king and rook mate", "Play a timed queen mate drill"), 0);
+            // FIXED: zero-session profile reports no longer call Gemini with an empty payload that can produce malformed responses.
+        }
         String fingerprint = fingerprint(profileFingerprintSource(history));
         if (!refresh && fingerprint.equals(user.getProfileReportFingerprint()) && user.getProfileReportJson() != null) {
             return parseCached(user.getProfileReportJson(), PlayerProfileReportDto.class);

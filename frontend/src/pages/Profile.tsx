@@ -1,7 +1,7 @@
 import { Play, RefreshCw, Trophy, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ReportPanel } from '../components/ReportPanel';
-import { api, HttpError } from '../lib/api';
+import { api, currentUser, HttpError } from '../lib/api';
 import { difficultyLabels, modeLabels } from '../lib/fallback';
 import type { FavoriteDto, PlayerProfileReportDto, ProfileDto, TrainingMode } from '../types/api';
 
@@ -34,8 +34,15 @@ export function Profile({ onNotice, onPlay }: Props) {
         } else {
           console.error('Profile fetch failed:', profileResult.reason);
           const message = describeProfileFailure(profileResult.reason);
-          setError(message);
+          const fallback = fallbackProfile();
+          if (fallback) {
+            setProfile(fallback);
+            setError('');
+          } else {
+            setError(message);
+          }
           onNotice(message);
+          // FIXED: a profile API 500 should not hide the whole profile for a signed-in zero-game user.
         }
         if (favoritesResult.status === 'fulfilled') {
           setFavorites(favoritesResult.value);
@@ -212,6 +219,27 @@ export function Profile({ onNotice, onPlay }: Props) {
       </div>
     </section>
   );
+}
+
+function fallbackProfile(): ProfileDto | undefined {
+  const auth = currentUser();
+  if (!auth) return undefined;
+  return {
+    username: auth.username,
+    joinDate: new Date().toISOString(),
+    totalSessions: 0,
+    totalCompleted: 0,
+    currentStreak: 0,
+    tournamentRating: 1000,
+    regularChessRating: 900,
+    bestCheckmateModes: [],
+    bestTimes: [],
+    accuracyTrend: [],
+    breakdown: [],
+    favoritePositionsCount: 0,
+    leaderboardRank: 0,
+    totalRankedUsers: 0,
+  };
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
