@@ -10,5 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface TrainingPuzzleRepository extends JpaRepository<TrainingPuzzle, UUID> {
     List<TrainingPuzzle> findByModeAndDifficulty(TrainingMode mode, Difficulty difficulty);
 
+    List<TrainingPuzzle> findByDifficulty(Difficulty difficulty);
+
     List<TrainingPuzzle> findByDailyChallengeTrue();
 }

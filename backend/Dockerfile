@@ -1,7 +1,8 @@
 FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /app
-COPY pom.xml .
-COPY src ./src
+COPY backend/pom.xml .
+COPY backend/src ./src
+# FIXED: Render builds this Dockerfile from the repo root, so copying pom.xml/src without the backend prefix broke deployment.
 RUN mvn -q -DskipTests package
 
 FROM eclipse-temurin:21-jre-jammy

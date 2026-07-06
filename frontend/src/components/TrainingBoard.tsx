@@ -10,14 +10,17 @@ interface Props {
   session?: SessionDto;
   hint?: HintResponse;
   solutionMove?: MoveDto;
+  analysisMoves?: MoveDto[];
   onMove: (uciMove: string) => Promise<boolean>;
 }
 
-export function TrainingBoard({ fen, session, hint, solutionMove, onMove }: Props) {
+export function TrainingBoard({ fen, session, hint, solutionMove, analysisMoves = [], onMove }: Props) {
   const [selected, setSelected] = useState<string>();
   const legalSquares = useMemo(() => (selected ? legalDestinations(fen, selected) : []), [fen, selected]);
   const lastMove = session?.moves[session.moves.length - 1]?.uci;
-  const arrows = [...arrowFromMove(lastMove), ...arrowFromMove(hint?.bestMove), ...arrowFromMove(solutionMove)] as never;
+  // FIXED: analysis replay only drew one side's move because the board accepted a single solution move.
+  const solutionArrows = analysisMoves.length > 0 ? analysisMoves.flatMap((move) => arrowFromMove(move)) : arrowFromMove(solutionMove);
+  const arrows = [...arrowFromMove(lastMove), ...arrowFromMove(hint?.bestMove), ...solutionArrows] as never;
 
   const customSquareStyles = useMemo(() => {
     const styles: Record<string, CSSProperties> = {};

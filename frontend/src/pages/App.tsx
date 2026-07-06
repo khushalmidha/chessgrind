@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Dumbbell, LogOut, Moon, Play, Sun, UserRound } from 'lucide-react';
+import { Dumbbell, LogOut, Moon, Sun, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AuthPanel } from '../components/AuthPanel';
 import { ControlPanel } from '../components/ControlPanel';
@@ -106,10 +106,11 @@ export function App() {
   const fen = session?.currentFen ?? (mode === 'CUSTOM' && customFen ? customFen : localFen);
   const state = boardStateLabel(session);
   const solutionMove = solution[solutionIndex];
+  const analysisArrows = solution.slice(solutionIndex, solutionIndex + 2);
 
   async function start() {
     if (!token() || !user) {
-      setNotice('Sign in first, then start a training session.');
+      startLocalSession('Guest practice started locally. Sign in and connect the API to save progress.');
       return;
     }
     setBusy(true);
@@ -138,10 +139,8 @@ export function App() {
       setNotice('Session started. Make the attacking move; the king will defend.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not start session';
-      setSession(undefined);
-      const startFen = mode === 'CUSTOM' && customFen ? customFen : selectedPuzzle.fen;
-      setLocalFen(startFen);
-      setNotice(`${message}. Started local board mode; backend session did not start.`);
+      startLocalSession(`${message}. Started timed local practice; backend session did not start.`);
+      // FIXED: Start left the app in a non-session board mode after API failures, so the timer never started.
     } finally {
       setBusy(false);
     }
@@ -158,6 +157,9 @@ export function App() {
         setSession((current) => current ? { ...current, status: 'TIMEOUT', remainingSeconds: 0 } : current);
         return false;
         // FIXED: moves could still be submitted after the client countdown reached zero.
+      }
+      if (session.id.startsWith('local-')) {
+        return moveLocal(uciMove);
       }
       try {
         const response = await api.move(session.id, uciMove);
@@ -177,6 +179,69 @@ export function App() {
       if (!result) return false;
       setLocalFen(chess.fen());
       setNotice(chess.isCheckmate() ? 'Checkmate.' : chess.inCheck() ? 'Check.' : 'Move accepted locally.');
+      return true;
+    } catch {
+      setNotice('Illegal move in this position.');
+      return false;
+    }
+  }
+
+  function startLocalSession(message: string) {
+    const startFen = mode === 'CUSTOM' && customFen ? customFen : selectedPuzzle.fen;
+    const now = new Date().toISOString();
+    const localSession: SessionDto = {
+      id: `local-${Date.now()}`,
+      mode,
+      difficulty,
+      timerMode,
+      status: 'ACTIVE',
+      startFen,
+      currentFen: startFen,
+      remainingSeconds: timerMode === 'NONE' ? 0 : timeLimit,
+      hintsUsed: 0,
+      mistakes: 0,
+      accuracy: 100,
+      startedAt: now,
+      moves: [],
+    };
+    setHint(undefined);
+    setSolution([]);
+    setGameReport(undefined);
+    setProfileReport(undefined);
+    setReportError('');
+    setSolutionIndex(0);
+    setSession(localSession);
+    setDisplaySeconds(localSession.remainingSeconds);
+    setLocalFen(startFen);
+    setNotice(message);
+  }
+
+  async function moveLocal(uciMove: string) {
+    if (!session) return false;
+    try {
+      const chess = new Chess(session.currentFen);
+      const result = chess.move({ from: uciMove.slice(0, 2), to: uciMove.slice(2, 4), promotion: uciMove[4] ?? 'q' });
+      if (!result) return false;
+      const status = chess.isCheckmate() ? 'CHECKMATE' : chess.isStalemate() ? 'STALEMATE' : chess.isDraw() ? 'DRAW' : 'ACTIVE';
+      const moveDto: MoveDto = {
+        ply: session.moves.length + 1,
+        uci: uciMove,
+        san: result.san,
+        fenAfter: chess.fen(),
+        engineMove: false,
+        optimal: true,
+        reason: 'Local practice move; engine scoring is available when the backend is connected.',
+      };
+      setSession({
+        ...session,
+        currentFen: chess.fen(),
+        status,
+        remainingSeconds: displaySeconds,
+        endedAt: status === 'ACTIVE' ? undefined : new Date().toISOString(),
+        moves: [...session.moves, moveDto],
+      });
+      setLocalFen(chess.fen());
+      setNotice(status === 'CHECKMATE' ? 'Checkmate.' : status === 'STALEMATE' ? 'Stalemate.' : status === 'DRAW' ? 'Draw.' : 'Move accepted locally.');
       return true;
     } catch {
       setNotice('Illegal move in this position.');
@@ -296,7 +361,7 @@ export function App() {
       return;
     }
     navigate('train');
-    void start();
+    setNotice('Choose your endgame type, then press Start to begin.');
   }
 
   function accountChip() {
@@ -398,22 +463,13 @@ export function App() {
                   <button type="button" className="rounded-tool border border-black/10 bg-white/70 px-3 py-2 text-sm font-semibold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember" onClick={() => setSolutionIndex(Math.min(solution.length - 1, solutionIndex + 1))}>Next</button>
                 </div>
               )}
-              <button
-                type="button"
-                onClick={playFromProfile}
-                disabled={busy}
-                className="inline-flex items-center gap-2 rounded-tool bg-copper px-3 py-2 text-sm font-bold text-white shadow-forge transition hover:bg-copper/90 disabled:opacity-60 dark:bg-ember dark:text-night dark:hover:bg-ember/90"
-              >
-                <Play size={17} />
-                Play
-              </button>
               {accountChip()}
               <IconButton icon={dark ? <Sun size={18} /> : <Moon size={18} />} label="Toggle theme" onClick={() => setDark((value) => !value)} />
             </div>
           </div>
 
           <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
-          <TrainingBoard fen={solutionMove?.fenAfter ?? fen} session={session} hint={hint} solutionMove={solutionMove} onMove={move} />
+          <TrainingBoard fen={solutionMove?.fenAfter ?? fen} session={session} hint={hint} solutionMove={solutionMove} analysisMoves={analysisArrows} onMove={move} />
         </section>
 
         <AnimatePresence mode="wait">

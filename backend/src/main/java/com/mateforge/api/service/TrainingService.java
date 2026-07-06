@@ -216,6 +216,13 @@ public class TrainingService {
         if (request.puzzleId() != null) {
             return puzzles.findById(request.puzzleId()).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Puzzle not found"));
         }
+        if (request.mode() == com.mateforge.api.model.TrainingMode.RANDOM) {
+            return puzzles.findByDifficulty(request.difficulty()).stream()
+                .findAny()
+                .or(() -> puzzles.findAll().stream().findAny())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "No puzzles are available"));
+            // FIXED: RANDOM mode used to query for a literal RANDOM puzzle row, so Start failed even when real puzzles existed.
+        }
         return puzzles.findByModeAndDifficulty(request.mode(), request.difficulty()).stream()
             .findAny()
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "No puzzle found for this mode and difficulty"));
