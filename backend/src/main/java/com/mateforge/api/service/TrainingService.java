@@ -327,11 +327,15 @@ public class TrainingService {
     }
 
     private AppUser user(UserPrincipal principal) {
+        if (principal == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again");
+        }
         return users.findById(principal.id()).orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
+        // FIXED: missing auth principals could crash training endpoints with a generic 500.
     }
 
     private AppUser user(TrainingSession session) {
-        return users.findById(session.getUser().getId()).orElseThrow();
+        return users.findById(session.getUser().getId()).orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
     }
 
     private void publish(TrainingSession session) {

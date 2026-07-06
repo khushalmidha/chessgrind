@@ -21,6 +21,7 @@ import com.mateforge.api.repository.TrainingSessionRepository;
 import com.mateforge.api.security.UserPrincipal;
 import java.time.Duration;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -137,6 +138,10 @@ public class AnalyticsService {
     }
 
     private AppUser user(UserPrincipal principal) {
-        return users.findById(principal.id()).orElseThrow();
+        if (principal == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again");
+        }
+        return users.findById(principal.id()).orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again"));
+        // FIXED: missing or stale auth principals produced a generic 500 on profile/favorites endpoints.
     }
 }

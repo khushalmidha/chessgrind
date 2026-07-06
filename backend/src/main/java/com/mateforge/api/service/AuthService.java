@@ -14,10 +14,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Service
@@ -46,7 +48,8 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (users.existsByEmail(request.email())) {
+        String email = request.email().toLowerCase();
+        if (users.existsByEmail(email)) {
             throw new ApiException(HttpStatus.CONFLICT, "Email is already registered");
         }
         if (users.existsByUsername(request.username())) {
@@ -54,14 +57,20 @@ public class AuthService {
         }
         AppUser user = new AppUser();
         user.setUsername(request.username());
-        user.setEmail(request.email().toLowerCase());
+        user.setEmail(email);
         user.setPasswordHash(encoder.encode(request.password()));
         users.save(user);
         return response(user);
+        // FIXED: duplicate-email checks used raw case while saved emails are lowercased, causing avoidable 500s.
     }
 
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.email().toLowerCase(), request.password()));
+        try {
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.email().toLowerCase(), request.password()));
+        } catch (AuthenticationException ex) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+            // FIXED: failed password authentication bubbled up as a generic 500 instead of a 401.
+        }
         AppUser user = users.findByEmail(request.email().toLowerCase())
             .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
         return response(user);
@@ -72,15 +81,7 @@ public class AuthService {
         if (googleClientId == null || googleClientId.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Google sign-in is not configured");
         }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> tokenInfo = restClient.get()
-            .uri(UriComponentsBuilder.fromHttpUrl("https://oauth2.googleapis.com/tokeninfo")
-                .queryParam("id_token", request.credential())
-                .build()
-                .encode()
-                .toUri())
-            .retrieve()
-            .body(Map.class);
+        Map<String, Object> tokenInfo = googleTokenInfo(request.credential());
         if (tokenInfo == null || !googleClientId.equals(tokenInfo.get("aud"))) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid Google token audience");
         }
@@ -88,7 +89,11 @@ public class AuthService {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Google email is not verified");
         }
 
-        String email = String.valueOf(tokenInfo.get("email")).toLowerCase();
+        Object rawEmail = tokenInfo.get("email");
+        if (!(rawEmail instanceof String googleEmail) || !googleEmail.contains("@")) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Google token did not include a valid email");
+        }
+        String email = googleEmail.toLowerCase();
         String name = String.valueOf(tokenInfo.getOrDefault("name", email.substring(0, email.indexOf('@'))));
         AppUser user = users.findByEmail(email).orElseGet(() -> {
             AppUser created = new AppUser();
@@ -98,6 +103,23 @@ public class AuthService {
             return users.save(created);
         });
         return response(user);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> googleTokenInfo(String credential) {
+        try {
+            return restClient.get()
+                .uri(UriComponentsBuilder.fromHttpUrl("https://oauth2.googleapis.com/tokeninfo")
+                    .queryParam("id_token", credential)
+                    .build()
+                    .encode()
+                    .toUri())
+                .retrieve()
+                .body(Map.class);
+        } catch (RestClientException ex) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Google sign-in token could not be verified");
+            // FIXED: Google token verification failures bubbled up as 500 Unexpected server error.
+        }
     }
 
     private AuthResponse response(AppUser user) {

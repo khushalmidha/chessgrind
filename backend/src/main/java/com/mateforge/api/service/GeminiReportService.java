@@ -92,8 +92,12 @@ public class GeminiReportService {
 
     @Transactional
     public PlayerProfileReportDto profileReport(UserPrincipal principal, boolean refresh) {
+        if (principal == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again");
+        }
         AppUser user = users.findById(principal.id())
             .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
+        // FIXED: stale profile-report auth could produce a generic 500 before user lookup.
         List<TrainingSession> history = sessions.findTop20ByUserOrderByStartedAtDesc(user);
         String fingerprint = fingerprint(profileFingerprintSource(history));
         if (!refresh && fingerprint.equals(user.getProfileReportFingerprint()) && user.getProfileReportJson() != null) {
