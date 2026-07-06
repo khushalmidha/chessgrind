@@ -36,12 +36,18 @@ public final class AnalyticsDtos {
     public record ModeDifficultyBreakdownDto(TrainingMode mode, Difficulty difficulty, long sessionsPlayed, double averageAccuracy) {
     }
 
+    public record BestCheckmateModeDto(TrainingMode mode, long completed, double averageAccuracy, Integer bestSeconds) {
+    }
+
     public record ProfileDto(
         String username,
         Instant joinDate,
         long totalSessions,
         int totalCompleted,
         int currentStreak,
+        int tournamentRating,
+        int regularChessRating,
+        List<BestCheckmateModeDto> bestCheckmateModes,
         List<ModeBestTimeDto> bestTimes,
         List<AccuracyPointDto> accuracyTrend,
         List<ModeDifficultyBreakdownDto> breakdown,

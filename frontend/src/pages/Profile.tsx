@@ -106,7 +106,9 @@ export function Profile({ onNotice, onPlay }: Props) {
               )}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-sm">
+          <div className="grid grid-cols-2 gap-2 text-center text-sm sm:grid-cols-5">
+            <Metric label="Tournament" value={`${profile.tournamentRating}`} />
+            <Metric label="Regular" value={`${profile.regularChessRating}`} />
             <Metric label="Streak" value={`${profile.currentStreak}`} />
             <Metric label="Rank" value={profile.leaderboardRank ? `#${profile.leaderboardRank}` : '-'} />
             <Metric label="Sessions" value={`${profile.totalSessions}`} />
@@ -130,6 +132,26 @@ export function Profile({ onNotice, onPlay }: Props) {
               <span className="text-xs text-black/45 dark:text-white/45">Last {profile.accuracyTrend.length} sessions</span>
             </div>
             <Sparkline points={profile.accuracyTrend.map((point) => point.accuracy)} />
+          </div>
+
+          <div className="mf-panel rounded-forge p-4">
+            <h2 className="mb-3 font-bold">Best Checkmates</h2>
+            {profile.bestCheckmateModes.length === 0 ? (
+              <div className="rounded-tool border border-copper/20 bg-copper/10 p-3 text-sm text-copper dark:border-ember/20 dark:bg-ember/10 dark:text-ember">
+                No completed checkmates yet. Start with king + rook to build your profile.
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-3">
+                {profile.bestCheckmateModes.map((item) => (
+                  <div key={item.mode} className="rounded-tool border border-black/10 bg-white/50 p-3 dark:border-white/10 dark:bg-white/5">
+                    <div className="font-semibold">{modeLabels[item.mode]}</div>
+                    <div className="mt-1 text-xs text-black/55 dark:text-white/55">
+                      {item.completed} mates · {item.averageAccuracy.toFixed(1)}% avg · {item.bestSeconds ? formatSeconds(item.bestSeconds) : '-'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mf-panel overflow-hidden rounded-forge">

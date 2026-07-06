@@ -3,6 +3,7 @@ package com.mateforge.api.service;
 import com.mateforge.api.dto.AnalyticsDtos.FavoriteDto;
 import com.mateforge.api.dto.AnalyticsDtos.FavoriteRequest;
 import com.mateforge.api.dto.AnalyticsDtos.AccuracyPointDto;
+import com.mateforge.api.dto.AnalyticsDtos.BestCheckmateModeDto;
 import com.mateforge.api.dto.AnalyticsDtos.ModeBestTimeDto;
 import com.mateforge.api.dto.AnalyticsDtos.ModeDifficultyBreakdownDto;
 import com.mateforge.api.dto.AnalyticsDtos.ProfileDto;
@@ -21,7 +22,11 @@ import com.mateforge.api.repository.TrainingSessionRepository;
 import com.mateforge.api.security.UserPrincipal;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,44 +74,33 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public ProfileDto profile(UserPrincipal principal) {
         AppUser user = user(principal);
-        long totalSessions = sessions.countByUser(user);
-        long favoriteCount = favorites.countByUser(user);
-        Rank rank = rankFor(user);
-        if (totalSessions == 0) {
-            return new ProfileDto(
-                user.getUsername(),
-                user.getCreatedAt(),
-                0,
-                user.getTotalCompleted(),
-                user.getStreakDays(),
-                List.of(),
-                List.of(),
-                List.of(),
-                favoriteCount,
-                rank.position(),
-                rank.totalUsers()
-            );
-            // FIXED: brand-new users with zero sessions still need a profile instead of hitting aggregate queries that can fail on empty data.
-        }
-        List<TrainingSession> recent = sessions.findTop20ByUserOrderByStartedAtDesc(user);
+        List<TrainingSession> recent = safeRecentSessions(user);
+        long totalSessions = safeTotalSessions(user, recent.size());
+        long favoriteCount = safeFavoriteCount(user);
         List<AccuracyPointDto> accuracyTrend = recent.reversed().stream()
             .map(session -> new AccuracyPointDto(session.getStartedAt(), session.getAccuracy()))
             .toList();
-        List<ModeBestTimeDto> bestTimes = bestTimes(user);
-        List<ModeDifficultyBreakdownDto> breakdown = breakdown(user);
+        List<ModeBestTimeDto> bestTimes = bestTimesFromHistory(recent);
+        List<ModeDifficultyBreakdownDto> breakdown = breakdownFromHistory(recent);
+        List<BestCheckmateModeDto> bestCheckmates = bestCheckmatesFromHistory(recent);
+        double averageAccuracy = recent.stream().mapToDouble(TrainingSession::getAccuracy).average().orElse(0);
         return new ProfileDto(
             user.getUsername(),
             user.getCreatedAt(),
             totalSessions,
             user.getTotalCompleted(),
             user.getStreakDays(),
+            rating(1000, averageAccuracy, user.getTotalCompleted(), user.getStreakDays()),
+            rating(900, averageAccuracy, recent.size(), 0),
+            bestCheckmates,
             bestTimes,
             accuracyTrend,
             breakdown,
             favoriteCount,
-            rank.position(),
-            rank.totalUsers()
+            0,
+            0
         );
+        // FIXED: profile now renders for zero-game users without native aggregate/rank queries that were causing 500s.
     }
 
     @Transactional
@@ -153,30 +147,79 @@ public class AnalyticsService {
         }
     }
 
-    private List<ModeBestTimeDto> bestTimes(AppUser user) {
+    private List<TrainingSession> safeRecentSessions(AppUser user) {
         try {
-            return sessions.bestTimesByMode(user.getId()).stream()
-                .map(row -> new ModeBestTimeDto(TrainingMode.valueOf(row.getMode()), row.getSeconds()))
-                .toList();
+            return sessions.findTop20ByUserOrderByStartedAtDesc(user);
         } catch (RuntimeException ex) {
             return List.of();
         }
     }
 
-    private List<ModeDifficultyBreakdownDto> breakdown(AppUser user) {
+    private long safeTotalSessions(AppUser user, long fallback) {
         try {
-            return sessions.modeDifficultyBreakdown(user.getId()).stream()
-                .map(row -> new ModeDifficultyBreakdownDto(TrainingMode.valueOf(row.getMode()), Difficulty.valueOf(row.getDifficulty()),
-                    row.getSessionsPlayed(), Math.round(row.getAverageAccuracy() * 100.0) / 100.0))
-                .toList();
+            return sessions.countByUser(user);
         } catch (RuntimeException ex) {
-            List<ModeDifficultyBreakdownDto> fallback = new ArrayList<>();
-            for (TrainingSession session : sessions.findTop20ByUserOrderByStartedAtDesc(user)) {
-                fallback.add(new ModeDifficultyBreakdownDto(session.getMode(), session.getDifficulty(), 1, session.getAccuracy()));
-            }
             return fallback;
-            // FIXED: profile breakdown now degrades to recent-session data if DB aggregation fails.
         }
+    }
+
+    private long safeFavoriteCount(AppUser user) {
+        try {
+            return favorites.countByUser(user);
+        } catch (RuntimeException ex) {
+            return 0;
+        }
+    }
+
+    private List<ModeBestTimeDto> bestTimesFromHistory(List<TrainingSession> history) {
+        return history.stream()
+            .filter(session -> session.getStatus() == SessionStatus.CHECKMATE && session.getEndedAt() != null)
+            .collect(Collectors.groupingBy(TrainingSession::getMode,
+                Collectors.mapping(session -> (int) elapsedSeconds(session), Collectors.minBy(Integer::compareTo))))
+            .entrySet()
+            .stream()
+            .map(entry -> new ModeBestTimeDto(entry.getKey(), entry.getValue().orElse(null)))
+            .toList();
+    }
+
+    private List<ModeDifficultyBreakdownDto> breakdownFromHistory(List<TrainingSession> history) {
+        Map<String, List<TrainingSession>> grouped = history.stream()
+            .collect(Collectors.groupingBy(session -> session.getMode().name() + "|" + session.getDifficulty().name()));
+        List<ModeDifficultyBreakdownDto> rows = new ArrayList<>();
+        for (List<TrainingSession> group : grouped.values()) {
+            TrainingSession first = group.getFirst();
+            double average = group.stream().mapToDouble(TrainingSession::getAccuracy).average().orElse(0);
+            rows.add(new ModeDifficultyBreakdownDto(first.getMode(), first.getDifficulty(), group.size(), Math.round(average * 100.0) / 100.0));
+        }
+        rows.sort(Comparator.comparing((ModeDifficultyBreakdownDto row) -> row.mode().name()).thenComparing(row -> row.difficulty().name()));
+        return rows;
+    }
+
+    private List<BestCheckmateModeDto> bestCheckmatesFromHistory(List<TrainingSession> history) {
+        return history.stream()
+            .filter(session -> session.getStatus() == SessionStatus.CHECKMATE)
+            .collect(Collectors.groupingBy(TrainingSession::getMode))
+            .entrySet()
+            .stream()
+            .map(entry -> {
+                List<TrainingSession> group = entry.getValue();
+                double average = group.stream().mapToDouble(TrainingSession::getAccuracy).average().orElse(0);
+                Integer bestSeconds = group.stream()
+                    .filter(session -> session.getEndedAt() != null)
+                    .map(session -> (int) elapsedSeconds(session))
+                    .filter(Objects::nonNull)
+                    .min(Integer::compareTo)
+                    .orElse(null);
+                return new BestCheckmateModeDto(entry.getKey(), group.size(), Math.round(average * 100.0) / 100.0, bestSeconds);
+            })
+            .sorted(Comparator.comparing(BestCheckmateModeDto::completed).reversed().thenComparing(BestCheckmateModeDto::averageAccuracy).reversed())
+            .limit(3)
+            .toList();
+    }
+
+    private int rating(int base, double averageAccuracy, long volume, int streak) {
+        int rating = base + (int) Math.round(averageAccuracy * 4) + (int) Math.min(220, volume * 18) + Math.min(80, streak * 8);
+        return Math.max(800, Math.min(2200, rating));
     }
 
     private record Rank(int position, int totalUsers) {

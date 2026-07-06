@@ -139,12 +139,22 @@ export interface ModeDifficultyBreakdownDto {
   averageAccuracy: number;
 }
 
+export interface BestCheckmateModeDto {
+  mode: TrainingMode;
+  completed: number;
+  averageAccuracy: number;
+  bestSeconds?: number;
+}
+
 export interface ProfileDto {
   username: string;
   joinDate: string;
   totalSessions: number;
   totalCompleted: number;
   currentStreak: number;
+  tournamentRating: number;
+  regularChessRating: number;
+  bestCheckmateModes: BestCheckmateModeDto[];
   bestTimes: ModeBestTimeDto[];
   accuracyTrend: AccuracyPointDto[];
   breakdown: ModeDifficultyBreakdownDto[];
