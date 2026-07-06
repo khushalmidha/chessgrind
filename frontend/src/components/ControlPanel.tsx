@@ -54,7 +54,7 @@ export function ControlPanel(props: Props) {
         <div className="flex items-center gap-3">
           <div className="mf-wordmark-mark flex h-10 w-10 items-center justify-center rounded-tool font-display text-lg font-bold text-white">M</div>
           <div>
-            <h1 className="mf-wordmark text-2xl font-bold">MateForge</h1>
+            <h1 className="mf-wordmark text-2xl font-bold">Mateforge</h1>
             <p className="text-sm text-black/55 dark:text-white/55">Pattern drills against best defense.</p>
           </div>
         </div>

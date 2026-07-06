@@ -384,7 +384,7 @@ export function App() {
             <div className="flex min-w-0 items-center gap-3">
               <div className="mf-wordmark-mark flex h-11 w-11 shrink-0 items-center justify-center rounded-tool font-display text-lg font-bold text-white">M</div>
               <div className="min-w-0">
-                <div className="mf-wordmark text-xl font-bold">MateForge</div>
+                <div className="mf-wordmark text-xl font-bold">Mateforge</div>
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-display font-bold uppercase text-copper dark:text-ember">{state}</span>
                   <span className="text-black/50 dark:text-white/55">{notice}</span>

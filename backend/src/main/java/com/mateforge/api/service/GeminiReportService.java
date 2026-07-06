@@ -75,7 +75,7 @@ public class GeminiReportService {
         }
 
         String prompt = """
-            You are MateForge's chess training analyst. Create a concise post-session report.
+            You are Mateforge's chess training analyst. Create a concise post-session report.
             Use only the recorded data below. Do not invent engine evaluations, plans, or move facts that are absent.
             Return JSON matching the provided schema.
 
@@ -101,7 +101,7 @@ public class GeminiReportService {
         }
 
         String prompt = """
-            You are MateForge's chess coach. Create a rolling player profile from recent checkmate-training sessions.
+            You are Mateforge's chess coach. Create a rolling player profile from recent checkmate-training sessions.
             Use only the aggregate facts and recorded sessions below. Do not invent unrecorded chess metrics.
             Return JSON matching the provided schema.
 

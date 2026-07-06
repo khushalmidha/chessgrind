@@ -1,7 +1,7 @@
 import { Play, RefreshCw, Trophy, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ReportPanel } from '../components/ReportPanel';
-import { api } from '../lib/api';
+import { api, HttpError } from '../lib/api';
 import { difficultyLabels, modeLabels } from '../lib/fallback';
 import type { FavoriteDto, PlayerProfileReportDto, ProfileDto, TrainingMode } from '../types/api';
 
@@ -22,18 +22,26 @@ export function Profile({ onNotice, onPlay }: Props) {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    Promise.all([api.profile(), api.favorites()])
-      .then(([profileResponse, favoriteResponse]) => {
+    setError('');
+    setProfile(undefined);
+    setFavorites([]);
+    Promise.allSettled([api.profile(), api.favorites()])
+      .then(([profileResult, favoritesResult]) => {
         if (!active) return;
-        setProfile(profileResponse);
-        setFavorites(favoriteResponse);
-        setError('');
-      })
-      .catch((failure) => {
-        if (!active) return;
-        const message = failure instanceof Error ? failure.message : 'Profile unavailable';
-        setError(message);
-        onNotice(message);
+        if (profileResult.status === 'fulfilled') {
+          setProfile(profileResult.value);
+          setError('');
+        } else {
+          console.error('Profile fetch failed:', profileResult.reason);
+          const message = describeProfileFailure(profileResult.reason);
+          setError(message);
+          onNotice(message);
+        }
+        if (favoritesResult.status === 'fulfilled') {
+          setFavorites(favoritesResult.value);
+        } else {
+          console.error('Favorites fetch failed:', favoritesResult.reason);
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -91,6 +99,11 @@ export function Profile({ onNotice, onPlay }: Props) {
             <div>
               <h1 className="font-display text-2xl font-bold">{profile.username}</h1>
               <p className="text-sm text-black/55 dark:text-white/55">Joined {formatDate(profile.joinDate)}</p>
+              {profile.totalSessions === 0 && (
+                <div className="mt-2 rounded-tool border border-copper/20 bg-copper/10 px-3 py-2 text-sm text-copper dark:border-ember/20 dark:bg-ember/10 dark:text-ember">
+                  Play your first session to unlock your profile.
+                </div>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center text-sm">
@@ -220,4 +233,14 @@ function formatSeconds(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return `${minutes}:${rest.toString().padStart(2, '0')}`;
+}
+
+function describeProfileFailure(failure: unknown) {
+  if (failure instanceof HttpError) {
+    return `${failure.status}: ${failure.message}`;
+  }
+  if (failure instanceof Error) {
+    return failure.message || 'Profile unavailable';
+  }
+  return 'Profile unavailable';
 }

@@ -1,4 +1,4 @@
-# MateForge
+# Mateforge
 
 Full-stack checkmate training platform for practicing technical mates against best legal defense.
 

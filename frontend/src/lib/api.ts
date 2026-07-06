@@ -17,6 +17,17 @@ const TOKEN_KEY = 'mateforge.token';
 const USER_KEY = 'mateforge.user';
 const AUTH_EXPIRED_EVENT = 'mateforge:auth-expired';
 
+export class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public body?: unknown,
+  ) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
 export function token() {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -66,18 +77,22 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try {
     response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   } catch {
-    throw new Error('Network error: API is unreachable');
+    throw new Error('Cannot reach the server');
     // FIXED: network failures were surfaced as generic rejected fetches without a user-readable API error.
   }
   if (!response.ok) {
+    const body = await response.json().catch(() => undefined as unknown);
+    const bodyMessage = typeof body === 'object' && body && 'message' in body
+      ? String((body as { message?: unknown }).message ?? '')
+      : '';
+    const message = bodyMessage || response.statusText || 'Request failed';
     if (response.status === 401) {
       clearAuth();
       notifyAuthExpired();
-      throw new Error('Session expired, please sign in again');
+      throw new HttpError(response.status, message || 'Session expired, please sign in again', body);
       // FIXED: expired JWTs now clear the stored auth and emit a UI signal instead of failing silently.
     }
-    const body = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(body.message ?? 'Request failed');
+    throw new HttpError(response.status, message, body);
   }
   return response.json() as Promise<T>;
 }
