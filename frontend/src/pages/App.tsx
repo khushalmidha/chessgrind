@@ -35,6 +35,7 @@ export function App() {
   const [reportError, setReportError] = useState('');
   const [reportsUnavailable, setReportsUnavailable] = useState(false);
   const [solutionIndex, setSolutionIndex] = useState(0);
+  const [autoReportSessionId, setAutoReportSessionId] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Ready for a clean mate.');
 
@@ -94,6 +95,14 @@ export function App() {
     }
   }, [session, timeLimit, timerMode]);
 
+  useEffect(() => {
+    if (!session || session.id.startsWith('local-') || session.status === 'ACTIVE') return;
+    if (reportsUnavailable || gameReport || reportLoading || autoReportSessionId === session.id) return;
+    setAutoReportSessionId(session.id);
+    void requestReport(false);
+    // FIXED: review mode now asks for the AI session report automatically after a connected game ends.
+  }, [autoReportSessionId, gameReport, reportLoading, reportsUnavailable, session?.id, session?.status]);
+
   const selectedPuzzle = useMemo(() => {
     if (mode === 'RANDOM') {
       const filtered = puzzles.filter((puzzle) => puzzle.difficulty === difficulty);
@@ -122,6 +131,7 @@ export function App() {
     setProfileReport(undefined);
     setReportError('');
     setSolutionIndex(0);
+    setAutoReportSessionId('');
     try {
       const currentPuzzle = mode === 'CUSTOM' ? undefined : selectedPuzzle;
       const started = await api.startSession({
@@ -212,6 +222,7 @@ export function App() {
     setProfileReport(undefined);
     setReportError('');
     setSolutionIndex(0);
+    setAutoReportSessionId('');
     setSession(localSession);
     setDisplaySeconds(localSession.remainingSeconds);
     setLocalFen(startFen);
@@ -370,6 +381,7 @@ export function App() {
     setProfileReport(undefined);
     setReportError('');
     setSolutionIndex(0);
+    setAutoReportSessionId('');
     setLocalFen(mode === 'CUSTOM' && customFen ? customFen : selectedPuzzle.fen);
     setNotice('Board reset.');
   }

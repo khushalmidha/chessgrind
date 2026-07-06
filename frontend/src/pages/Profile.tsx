@@ -189,6 +189,16 @@ export function Profile({ onNotice, onPlay }: Props) {
 
         <aside className="grid content-start gap-4">
           <div className="mf-panel rounded-forge p-4">
+            <div className="mb-3 flex items-center gap-2 font-bold"><Trophy size={17} /> Coach Suggestion</div>
+            <textarea
+              readOnly
+              value={coachSuggestion(profile)}
+              className="mf-input min-h-40 w-full resize-none rounded-tool p-3 text-sm leading-6"
+              aria-label="Tournament and rating suggestion"
+            />
+          </div>
+
+          <div className="mf-panel rounded-forge p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="font-bold">Favorites</h2>
               <span className="text-xs text-black/45 dark:text-white/45">{profile.favoritePositionsCount}</span>
@@ -240,6 +250,30 @@ function fallbackProfile(): ProfileDto | undefined {
     leaderboardRank: 0,
     totalRankedUsers: 0,
   };
+}
+
+function coachSuggestion(profile: ProfileDto) {
+  const best = profile.bestCheckmateModes[0];
+  const weak = profile.breakdown
+    .slice()
+    .sort((left, right) => left.averageAccuracy - right.averageAccuracy)[0];
+  const targetTournament = profile.tournamentRating <= 1050
+    ? 'Beginner arena around 900-1100 rating'
+    : profile.tournamentRating <= 1350
+      ? 'Improver arena around 1100-1350 rating'
+      : 'Advanced arena within 150 rating points of your tournament rating';
+  const lines = [
+    `Recommended tournament: ${targetTournament}.`,
+    `Your tournament rating is ${profile.tournamentRating}; choose events within +/-150 points so games are challenging but not punishing.`,
+    best
+      ? `Best checkmate pattern: ${modeLabels[best.mode]} (${best.averageAccuracy.toFixed(1)}% avg). Use this as your confidence round.`
+      : 'Best checkmate pattern: not enough completed mates yet. Start with king + rook and queen mates.',
+    weak
+      ? `Rating improvement focus: drill ${modeLabels[weak.mode]} on ${difficultyLabels[weak.difficulty]} until you reach 85%+ accuracy.`
+      : 'Rating improvement focus: complete 5 timed beginner sessions, then review every missed move.',
+    'For regular rating: reduce hint use, keep king opposition tight, and review the final two moves after every session.',
+  ];
+  return lines.join('\n');
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

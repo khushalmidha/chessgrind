@@ -61,7 +61,8 @@ public class AnalyticsService {
             .filter(move -> !move.isEngineMove() && !move.isOptimal())
             .map(move -> move.getUci() + ": " + move.getReason())
             .toList();
-        return new ProgressSummary(user.getTotalCompleted(),
+        int completed = Math.toIntExact(Math.min(Integer.MAX_VALUE, safeCompletedSessions(user, history)));
+        return new ProgressSummary(completed,
             (int) sessions.countByUserAndStatus(user, SessionStatus.ACTIVE),
             user.getStreakDays(),
             Math.round(average * 100.0) / 100.0,
@@ -84,13 +85,14 @@ public class AnalyticsService {
         List<ModeDifficultyBreakdownDto> breakdown = breakdownFromHistory(recent);
         List<BestCheckmateModeDto> bestCheckmates = bestCheckmatesFromHistory(recent);
         double averageAccuracy = recent.stream().mapToDouble(TrainingSession::getAccuracy).average().orElse(0);
+        long completed = safeCompletedSessions(user, recent);
         return new ProfileDto(
             user.getUsername(),
             user.getCreatedAt(),
             totalSessions,
-            user.getTotalCompleted(),
+            Math.toIntExact(Math.min(Integer.MAX_VALUE, completed)),
             user.getStreakDays(),
-            rating(1000, averageAccuracy, user.getTotalCompleted(), user.getStreakDays()),
+            rating(1000, averageAccuracy, completed, user.getStreakDays()),
             rating(900, averageAccuracy, recent.size(), 0),
             bestCheckmates,
             bestTimes,
@@ -168,6 +170,15 @@ public class AnalyticsService {
             return favorites.countByUser(user);
         } catch (RuntimeException ex) {
             return 0;
+        }
+    }
+
+    private long safeCompletedSessions(AppUser user, List<TrainingSession> fallbackHistory) {
+        try {
+            return sessions.countByUserAndStatusNot(user, SessionStatus.ACTIVE);
+        } catch (RuntimeException ex) {
+            return fallbackHistory.stream().filter(session -> session.getStatus() != SessionStatus.ACTIVE).count();
+            // FIXED: profile completion counts now come from session history, so finished games update even if AppUser.totalCompleted is stale.
         }
     }
 

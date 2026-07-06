@@ -18,6 +18,8 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
 
     long countByUserAndStatus(AppUser user, SessionStatus status);
 
+    long countByUserAndStatusNot(AppUser user, SessionStatus status);
+
     @Query(value = """
         select s.mode as mode,
                cast(min(extract(epoch from (s.ended_at - s.started_at))) as integer) as seconds
