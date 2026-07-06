@@ -123,8 +123,8 @@ Create a Docker web service from this repository.
 
 ```txt
 Environment: Docker
-Root directory: .
-Dockerfile path: backend/Dockerfile
+Root directory: backend
+Dockerfile path: Dockerfile
 ```
 
 Environment variables:
