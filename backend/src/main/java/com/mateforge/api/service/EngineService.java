@@ -1,6 +1,7 @@
 package com.mateforge.api.service;
 
 import com.github.bhlangonijr.chesslib.Board;
+import com.github.bhlangonijr.chesslib.Piece;
 import com.github.bhlangonijr.chesslib.Side;
 import com.github.bhlangonijr.chesslib.move.Move;
 import jakarta.annotation.PreDestroy;
@@ -46,8 +47,7 @@ public class EngineService {
         boolean fallback = best == null || best.isBlank() || "(none)".equals(best);
         if (fallback) {
             Board board = rules.board(fen);
-            List<Move> legal = rules.legalMoves(board);
-            best = legal.isEmpty() ? "" : legal.getFirst().toString();
+            best = fallbackMove(board);
         }
         return new EngineMove(best, fallback ? "Engine unavailable or timed out; using the first legal move as a safe fallback." : reasonFor(best, fen));
         // FIXED: a missing or hung Stockfish process previously failed silently with no clear reason for fallback moves.
@@ -160,6 +160,20 @@ public class EngineService {
             }
         }
         return null;
+    }
+
+    private String fallbackMove(Board board) {
+        List<Move> legal = rules.legalMoves(board);
+        if (legal.isEmpty()) {
+            return "";
+        }
+        Piece king = board.getSideToMove() == Side.WHITE ? Piece.WHITE_KING : Piece.BLACK_KING;
+        return legal.stream()
+            .filter(move -> board.getPiece(move.getFrom()) == king)
+            .findFirst()
+            .orElse(legal.getFirst())
+            .toString();
+        // FIXED: when Stockfish is unavailable, defender fallback now prefers moving the side-to-move king.
     }
 
     private void resetEngine() {

@@ -20,6 +20,7 @@ import com.mateforge.api.repository.TrainingMoveRepository;
 import com.mateforge.api.repository.TrainingSessionRepository;
 import com.mateforge.api.security.UserPrincipal;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -68,28 +69,41 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public ProfileDto profile(UserPrincipal principal) {
         AppUser user = user(principal);
-        List<TrainingSession> recent = sessions.findTop20ByUserOrderByStartedAtDesc(user);
+        long totalSessions = sessions.countByUser(user);
+        long favoriteCount = favorites.countByUser(user);
         Rank rank = rankFor(user);
-        List<ModeBestTimeDto> bestTimes = sessions.bestTimesByMode(user.getId()).stream()
-            .map(row -> new ModeBestTimeDto(TrainingMode.valueOf(row.getMode()), row.getSeconds()))
-            .toList();
+        if (totalSessions == 0) {
+            return new ProfileDto(
+                user.getUsername(),
+                user.getCreatedAt(),
+                0,
+                user.getTotalCompleted(),
+                user.getStreakDays(),
+                List.of(),
+                List.of(),
+                List.of(),
+                favoriteCount,
+                rank.position(),
+                rank.totalUsers()
+            );
+            // FIXED: brand-new users with zero sessions still need a profile instead of hitting aggregate queries that can fail on empty data.
+        }
+        List<TrainingSession> recent = sessions.findTop20ByUserOrderByStartedAtDesc(user);
         List<AccuracyPointDto> accuracyTrend = recent.reversed().stream()
             .map(session -> new AccuracyPointDto(session.getStartedAt(), session.getAccuracy()))
             .toList();
-        List<ModeDifficultyBreakdownDto> breakdown = sessions.modeDifficultyBreakdown(user.getId()).stream()
-            .map(row -> new ModeDifficultyBreakdownDto(TrainingMode.valueOf(row.getMode()), Difficulty.valueOf(row.getDifficulty()),
-                row.getSessionsPlayed(), Math.round(row.getAverageAccuracy() * 100.0) / 100.0))
-            .toList();
+        List<ModeBestTimeDto> bestTimes = bestTimes(user);
+        List<ModeDifficultyBreakdownDto> breakdown = breakdown(user);
         return new ProfileDto(
             user.getUsername(),
             user.getCreatedAt(),
-            sessions.countByUser(user),
+            totalSessions,
             user.getTotalCompleted(),
             user.getStreakDays(),
             bestTimes,
             accuracyTrend,
             breakdown,
-            favorites.countByUser(user),
+            favoriteCount,
             rank.position(),
             rank.totalUsers()
         );
@@ -125,13 +139,44 @@ public class AnalyticsService {
     }
 
     private Rank rankFor(AppUser user) {
-        long totalUsers = sessions.rankedUserCount();
-        Double bestSeconds = sessions.bestSecondsForUser(user.getId());
-        if (bestSeconds == null) {
-            return new Rank(0, Math.toIntExact(totalUsers));
+        try {
+            long totalUsers = sessions.rankedUserCount();
+            Double bestSeconds = sessions.bestSecondsForUser(user.getId());
+            if (bestSeconds == null) {
+                return new Rank(0, Math.toIntExact(totalUsers));
+            }
+            long fasterUsers = sessions.countUsersFasterThan(bestSeconds);
+            return new Rank(Math.toIntExact(fasterUsers + 1), Math.toIntExact(totalUsers));
+        } catch (RuntimeException ex) {
+            return new Rank(0, 0);
+            // FIXED: leaderboard aggregate issues should not make the profile page fail with 500.
         }
-        long fasterUsers = sessions.countUsersFasterThan(bestSeconds);
-        return new Rank(Math.toIntExact(fasterUsers + 1), Math.toIntExact(totalUsers));
+    }
+
+    private List<ModeBestTimeDto> bestTimes(AppUser user) {
+        try {
+            return sessions.bestTimesByMode(user.getId()).stream()
+                .map(row -> new ModeBestTimeDto(TrainingMode.valueOf(row.getMode()), row.getSeconds()))
+                .toList();
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
+    }
+
+    private List<ModeDifficultyBreakdownDto> breakdown(AppUser user) {
+        try {
+            return sessions.modeDifficultyBreakdown(user.getId()).stream()
+                .map(row -> new ModeDifficultyBreakdownDto(TrainingMode.valueOf(row.getMode()), Difficulty.valueOf(row.getDifficulty()),
+                    row.getSessionsPlayed(), Math.round(row.getAverageAccuracy() * 100.0) / 100.0))
+                .toList();
+        } catch (RuntimeException ex) {
+            List<ModeDifficultyBreakdownDto> fallback = new ArrayList<>();
+            for (TrainingSession session : sessions.findTop20ByUserOrderByStartedAtDesc(user)) {
+                fallback.add(new ModeDifficultyBreakdownDto(session.getMode(), session.getDifficulty(), 1, session.getAccuracy()));
+            }
+            return fallback;
+            // FIXED: profile breakdown now degrades to recent-session data if DB aggregation fails.
+        }
     }
 
     private record Rank(int position, int totalUsers) {
