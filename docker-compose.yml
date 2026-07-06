@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: mateforge-postgres
+    environment:
+      POSTGRES_DB: mateforge
+      POSTGRES_USER: mateforge
+      POSTGRES_PASSWORD: mateforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - mateforge-data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+
+volumes:
+  mateforge-data:
