@@ -56,6 +56,28 @@ public final class TrainingDtos {
     ) {
     }
 
+    public record ImportMoveDto(
+        @NotNull String uci,
+        boolean engineMove
+    ) {
+    }
+
+    public record ImportSessionRequest(
+        @NotNull TrainingMode mode,
+        @NotNull Difficulty difficulty,
+        @NotNull TimerMode timerMode,
+        @NotNull SessionStatus status,
+        @NotNull String startFen,
+        @NotNull String currentFen,
+        @Min(0) @Max(7200) int timeLimitSeconds,
+        @Min(0) int remainingSeconds,
+        @Min(0) int hintsUsed,
+        @NotNull Instant startedAt,
+        Instant endedAt,
+        @NotNull List<ImportMoveDto> moves
+    ) {
+    }
+
     public record SessionDto(
         UUID id,
         TrainingMode mode,

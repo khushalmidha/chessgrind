@@ -2,6 +2,7 @@ package com.mateforge.api.controller;
 
 import com.mateforge.api.dto.TrainingDtos.GameReportDto;
 import com.mateforge.api.dto.TrainingDtos.HintResponse;
+import com.mateforge.api.dto.TrainingDtos.ImportSessionRequest;
 import com.mateforge.api.dto.TrainingDtos.MoveRequest;
 import com.mateforge.api.dto.TrainingDtos.MoveResponse;
 import com.mateforge.api.dto.TrainingDtos.SessionDto;
@@ -36,6 +37,11 @@ public class TrainingController {
     @PostMapping
     SessionDto start(@Valid @RequestBody StartSessionRequest request, @AuthenticationPrincipal UserPrincipal principal) {
         return training.start(request, principal);
+    }
+
+    @PostMapping("/import")
+    SessionDto importCompleted(@Valid @RequestBody ImportSessionRequest request, @AuthenticationPrincipal UserPrincipal principal) {
+        return training.importCompleted(request, principal);
     }
 
     @GetMapping("/{id}")

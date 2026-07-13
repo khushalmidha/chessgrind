@@ -3,6 +3,8 @@ package com.mateforge.api.service;
 import com.github.bhlangonijr.chesslib.Board;
 import com.github.bhlangonijr.chesslib.move.Move;
 import com.mateforge.api.dto.TrainingDtos.HintResponse;
+import com.mateforge.api.dto.TrainingDtos.ImportMoveDto;
+import com.mateforge.api.dto.TrainingDtos.ImportSessionRequest;
 import com.mateforge.api.dto.TrainingDtos.MoveResponse;
 import com.mateforge.api.dto.TrainingDtos.SessionDto;
 import com.mateforge.api.dto.TrainingDtos.SolutionResponse;
@@ -84,6 +86,53 @@ public class TrainingService {
         session.setTakebacksEnabled(request.takebacksEnabled());
         sessions.save(session);
         publish(session);
+        return mapper.session(session);
+    }
+
+    @Transactional
+    public SessionDto importCompleted(ImportSessionRequest request, UserPrincipal principal) {
+        AppUser user = user(principal);
+        if (request.status() == SessionStatus.ACTIVE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Only completed local sessions can be saved");
+        }
+        rules.validatePlayableFen(request.startFen());
+        TrainingSession session = new TrainingSession();
+        session.setUser(user);
+        session.setMode(request.mode());
+        session.setDifficulty(request.difficulty());
+        session.setTimerMode(request.timerMode());
+        session.setStartFen(request.startFen());
+        session.setCurrentFen(request.startFen());
+        session.setTimeLimitSeconds(request.timeLimitSeconds());
+        session.setRemainingSeconds(Math.max(0, request.remainingSeconds()));
+        session.setHintsEnabled(true);
+        session.setTakebacksEnabled(false);
+        session.setHintsUsed(request.hintsUsed());
+        session.setStartedAt(request.startedAt());
+        session.setEndedAt(request.endedAt() == null ? Instant.now() : request.endedAt());
+        session.setStatus(request.status());
+        session.setNextPly(1);
+        sessions.save(session);
+
+        Board board = rules.board(request.startFen());
+        for (ImportMoveDto imported : request.moves()) {
+            boolean engineMove = imported.engineMove();
+            EngineService.EngineMove best = engineMove ? new EngineService.EngineMove(imported.uci(), "Defender move recorded from local practice.") : engine.bestMove(board.getFen());
+            Move move = rules.requireLegal(board, imported.uci());
+            boolean optimal = engineMove || best.uci().equals(imported.uci());
+            String san = rules.simpleSan(move, board);
+            board.doMove(move);
+            if (!engineMove && !optimal) {
+                session.setMistakes(session.getMistakes() + 1);
+            }
+            saveMove(session, imported.uci(), san, board.getFen(), engineMove, optimal,
+                engineMove ? "Defender reply saved from the completed game." : trainingReason(optimal, board));
+        }
+        session.setCurrentFen(board.getFen());
+        recalculateAccuracy(session);
+        sessions.save(session);
+        publish(session);
+        // FIXED: completed local games can now be saved and rescored against Stockfish so profile ratings update.
         return mapper.session(session);
     }
 

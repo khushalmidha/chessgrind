@@ -61,6 +61,21 @@ export interface StartSessionRequest {
   customFen?: string;
 }
 
+export interface ImportSessionRequest {
+  mode: TrainingMode;
+  difficulty: Difficulty;
+  timerMode: TimerMode;
+  status: SessionStatus;
+  startFen: string;
+  currentFen: string;
+  timeLimitSeconds: number;
+  remainingSeconds: number;
+  hintsUsed: number;
+  startedAt: string;
+  endedAt?: string;
+  moves: Array<{ uci: string; engineMove: boolean }>;
+}
+
 export interface MoveResponse {
   session: SessionDto;
   userMove: string;

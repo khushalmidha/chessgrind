@@ -36,6 +36,7 @@ export function App() {
   const [reportsUnavailable, setReportsUnavailable] = useState(false);
   const [solutionIndex, setSolutionIndex] = useState(0);
   const [autoReportSessionId, setAutoReportSessionId] = useState('');
+  const [savingLocalSessionId, setSavingLocalSessionId] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Ready for a clean mate.');
 
@@ -103,6 +104,14 @@ export function App() {
     // FIXED: review mode now asks for the AI session report automatically after a connected game ends.
   }, [autoReportSessionId, gameReport, reportLoading, reportsUnavailable, session?.id, session?.status]);
 
+  useEffect(() => {
+    if (!session || !session.id.startsWith('local-') || session.status === 'ACTIVE') return;
+    if (!token() || !user || savingLocalSessionId === session.id) return;
+    setSavingLocalSessionId(session.id);
+    void saveLocalCompleted(session, true);
+    // FIXED: completed fallback games are now saved to the user's profile instead of remaining local-only.
+  }, [savingLocalSessionId, session?.id, session?.status, user]);
+
   const selectedPuzzle = useMemo(() => {
     if (mode === 'RANDOM') {
       const filtered = puzzles.filter((puzzle) => puzzle.difficulty === difficulty);
@@ -132,6 +141,7 @@ export function App() {
     setReportError('');
     setSolutionIndex(0);
     setAutoReportSessionId('');
+    setSavingLocalSessionId('');
     try {
       const currentPuzzle = mode === 'CUSTOM' ? undefined : selectedPuzzle;
       const started = await api.startSession({
@@ -223,6 +233,7 @@ export function App() {
     setReportError('');
     setSolutionIndex(0);
     setAutoReportSessionId('');
+    setSavingLocalSessionId('');
     setSession(localSession);
     setDisplaySeconds(localSession.remainingSeconds);
     setLocalFen(startFen);
@@ -327,11 +338,17 @@ export function App() {
 
   async function requestReport(refresh = false) {
     if (!session) return;
+    let reportSession = session;
+    if (session.id.startsWith('local-')) {
+      const saved = await saveLocalCompleted(session, false);
+      if (!saved || saved.id.startsWith('local-')) return;
+      reportSession = saved;
+    }
     setReportLoading('session');
     setReportError('');
     setProfileReport(undefined);
     try {
-      const response = await api.report(session.id, refresh);
+      const response = await api.report(reportSession.id, refresh);
       setGameReport(response);
       setNotice('Performance report ready.');
     } catch (error) {
@@ -382,8 +399,46 @@ export function App() {
     setReportError('');
     setSolutionIndex(0);
     setAutoReportSessionId('');
+    setSavingLocalSessionId('');
     setLocalFen(mode === 'CUSTOM' && customFen ? customFen : selectedPuzzle.fen);
     setNotice('Board reset.');
+  }
+
+  async function saveLocalCompleted(localSession: SessionDto, silent: boolean) {
+    if (!token() || !user) {
+      if (!silent) setNotice('Sign in to save this completed game to your profile.');
+      return undefined;
+    }
+    if (localSession.status === 'ACTIVE') {
+      if (!silent) setNotice('Finish the game before saving it to your profile.');
+      return undefined;
+    }
+    try {
+      const saved = await api.importSession({
+        mode: localSession.mode,
+        difficulty: localSession.difficulty,
+        timerMode: localSession.timerMode,
+        status: localSession.status,
+        startFen: localSession.startFen,
+        currentFen: localSession.currentFen,
+        timeLimitSeconds: timeLimit,
+        remainingSeconds: localSession.remainingSeconds,
+        hintsUsed: localSession.hintsUsed,
+        startedAt: localSession.startedAt,
+        endedAt: localSession.endedAt ?? new Date().toISOString(),
+        moves: localSession.moves.map((move) => ({ uci: move.uci, engineMove: move.engineMove })),
+      });
+      setSession(saved);
+      setDisplaySeconds(saved.remainingSeconds);
+      setLocalFen(saved.currentFen);
+      setNotice('Game saved. Stockfish compared your moves and updated your profile rating.');
+      return saved;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save this completed game';
+      setNotice(message);
+      if (!silent) setReportError('Save this game first; report generation needs a connected saved session.');
+      return undefined;
+    }
   }
 
   function navigate(nextRoute: 'train' | 'profile' | 'tournament') {
