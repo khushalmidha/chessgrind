@@ -27,7 +27,8 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   engine:
     stockfish-path: ${STOCKFISH_PATH:stockfish}
-    move-time-ms: ${STOCKFISH_MOVE_TIME_MS:250}
+    move-time-ms: ${STOCKFISH_MOVE_TIME_MS:90}
+    # FIXED: 250ms was paid twice per training move for scoring plus defender play, making deployed games feel sluggish.
     line-depth: ${STOCKFISH_LINE_DEPTH:14}
   gemini:
     api-key: ${GEMINI_API_KEY:}

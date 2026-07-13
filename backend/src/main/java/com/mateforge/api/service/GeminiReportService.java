@@ -3,6 +3,7 @@ package com.mateforge.api.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mateforge.api.dto.TrainingDtos.GameReportDto;
+import com.mateforge.api.dto.TrainingDtos.MoveHighlightDto;
 import com.mateforge.api.dto.TrainingDtos.PlayerProfileReportDto;
 import com.mateforge.api.model.AppUser;
 import com.mateforge.api.model.SessionStatus;
@@ -83,7 +84,10 @@ public class GeminiReportService {
             %s
             """.formatted(toJson(sessionPayload(session, moveList)));
 
-        GameReportDto report = callGemini(prompt, gameReportSchema(), GameReportDto.class);
+        GameReportDto report = geminiConfigured()
+            ? safeGemini(prompt, gameReportSchema(), GameReportDto.class, fallbackSessionReport(session, moveList))
+            : fallbackSessionReport(session, moveList);
+        // FIXED: missing or failing Gemini config made post-game reports unusable instead of returning a real recorded-data coach report.
         session.setReportJson(toJson(report));
         session.setReportFingerprint(fingerprint);
         sessions.save(session);
@@ -118,11 +122,29 @@ public class GeminiReportService {
             %s
             """.formatted(toJson(profilePayload(history)));
 
-        PlayerProfileReportDto report = callGemini(prompt, profileReportSchema(), PlayerProfileReportDto.class);
+        PlayerProfileReportDto report = geminiConfigured()
+            ? safeGemini(prompt, profileReportSchema(), PlayerProfileReportDto.class, fallbackProfileReport(history))
+            : fallbackProfileReport(history);
+        // FIXED: profile coaching disappeared when GEMINI_API_KEY was absent; the endpoint now degrades to deterministic coaching.
         user.setProfileReportJson(toJson(report));
         user.setProfileReportFingerprint(fingerprint);
         users.save(user);
         return report;
+    }
+
+    private boolean geminiConfigured() {
+        return apiKey != null && !apiKey.isBlank();
+    }
+
+    private <T> T safeGemini(String prompt, Map<String, Object> schema, Class<T> type, T fallback) {
+        try {
+            return callGemini(prompt, schema, type);
+        } catch (ApiException ex) {
+            if (ex.status() == HttpStatus.SERVICE_UNAVAILABLE) {
+                return fallback;
+            }
+            throw ex;
+        }
     }
 
     private <T> T callGemini(String prompt, Map<String, Object> schema, Class<T> type) {
@@ -147,6 +169,81 @@ public class GeminiReportService {
         } catch (RestClientException ex) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI report generation is temporarily unavailable");
         }
+    }
+
+    private GameReportDto fallbackSessionReport(TrainingSession session, List<TrainingMove> moveList) {
+        List<TrainingMove> userMoves = moveList.stream().filter(move -> !move.isEngineMove()).toList();
+        List<TrainingMove> mistakes = userMoves.stream().filter(move -> !move.isOptimal()).toList();
+        double accuracy = session.getAccuracy();
+        List<String> strengths = new ArrayList<>();
+        if (session.getStatus() == SessionStatus.CHECKMATE) strengths.add("Converted the mating pattern to checkmate.");
+        if (accuracy >= 80) strengths.add("Kept a high move accuracy against the defender.");
+        if (session.getHintsUsed() == 0) strengths.add("Completed the drill without using hints.");
+        if (strengths.isEmpty()) strengths.add("Finished a recorded training attempt that can now be reviewed.");
+
+        List<String> weaknesses = new ArrayList<>();
+        if (!mistakes.isEmpty()) weaknesses.add("Review the inexact moves where Stockfish found a more forcing continuation.");
+        if (elapsedSeconds(session) > 180) weaknesses.add("Work on converting the same pattern with a faster clock.");
+        if (session.getHintsUsed() > 0) weaknesses.add("Reduce hint dependency by replaying the first critical move.");
+        if (weaknesses.isEmpty()) weaknesses.add("Keep sharpening speed and precision on nearby endgame patterns.");
+
+        List<String> recurringMistakes = mistakes.stream()
+            .map(TrainingMove::getReason)
+            .filter(reason -> reason != null && !reason.isBlank())
+            .distinct()
+            .limit(5)
+            .toList();
+        if (recurringMistakes.isEmpty()) {
+            recurringMistakes = List.of("No repeated mistake pattern was recorded in this session.");
+        }
+
+        List<MoveHighlightDto> highlights = userMoves.stream()
+            .limit(6)
+            .map(move -> new MoveHighlightDto(move.getPly(), move.isOptimal()
+                ? "Best or acceptable attacking move from the recorded line."
+                : cleanReason(move.getReason())))
+            .toList();
+
+        String summary = "You scored %.0f%% accuracy in %s with %d recorded attacking move%s. Outcome: %s."
+            .formatted(accuracy, session.getMode(), userMoves.size(), userMoves.size() == 1 ? "" : "s", session.getStatus());
+        String band = accuracy >= 85 ? "Strong" : accuracy >= 60 ? "Solid" : "Developing";
+        return new GameReportDto(summary, strengths, weaknesses, recurringMistakes, highlights,
+            List.of("Replay the highlighted ply sequence", "Compare your first move with the best-move arrow in review", "Repeat this mode once with a shorter timer"),
+            band);
+    }
+
+    private PlayerProfileReportDto fallbackProfileReport(List<TrainingSession> history) {
+        List<TrainingSession> completed = history.stream().filter(session -> session.getStatus() != SessionStatus.ACTIVE).toList();
+        if (completed.isEmpty()) {
+            return new PlayerProfileReportDto("Unrated", "Complete one Mateforge session to unlock a coaching profile.",
+                List.of(), List.of(), "No completed sessions are recorded yet.", List.of("Finish one king and rook mate", "Then replay it in review mode"), 0);
+        }
+        double averageAccuracy = completed.stream().mapToDouble(TrainingSession::getAccuracy).average().orElse(0);
+        List<String> strongModes = modeNames(completed, false);
+        List<String> weakModes = modeNames(completed, true);
+        List<String> mistakeReasons = commonMistakeReasons(completed);
+        int consistency = (int) Math.max(0, Math.min(100, Math.round(averageAccuracy)));
+        String level = averageAccuracy >= 85 ? "Strong" : averageAccuracy >= 60 ? "Solid" : "Developing";
+        String style = "Across %d recent completed sessions you average %.0f%% accuracy with %.1f hints per game."
+            .formatted(completed.size(), averageAccuracy, completed.stream().mapToInt(TrainingSession::getHintsUsed).average().orElse(0));
+        List<String> drills = new ArrayList<>();
+        if (!weakModes.isEmpty()) drills.add("Prioritize " + weakModes.getFirst() + " until it reaches your average accuracy.");
+        drills.add("Replay one missed move with the review arrows before starting the next game.");
+        drills.add("Use a tournament rating target near your current profile rating and choose events with increment time controls.");
+        if (!mistakeReasons.isEmpty()) drills.add("Focus on: " + mistakeReasons.getFirst());
+        return new PlayerProfileReportDto(level, style, strongModes, weakModes,
+            "Recent accuracy is based only on saved Mateforge sessions, so it updates after each completed game is stored.",
+            drills, consistency);
+    }
+
+    private String cleanReason(String reason) {
+        return reason == null || reason.isBlank() ? "Stockfish marked this move as inexact." : reason;
+    }
+
+    private List<String> modeNames(List<TrainingSession> sessions, boolean ascending) {
+        return modeAccuracy(sessions, ascending).stream()
+            .map(row -> row.get("mode") + " (" + row.get("averageAccuracy") + "%)")
+            .toList();
     }
 
     private String extractText(Map<String, Object> response) {

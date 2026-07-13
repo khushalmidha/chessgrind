@@ -1,7 +1,7 @@
 import { Chess } from 'chess.js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Dumbbell, LogOut, Moon, Sun, Trophy, UserRound } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AuthPanel } from '../components/AuthPanel';
 import { ControlPanel } from '../components/ControlPanel';
 import { IconButton } from '../components/IconButton';
@@ -39,6 +39,7 @@ export function App() {
   const [savingLocalSessionId, setSavingLocalSessionId] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Ready for a clean mate.');
+  const moveSubmitting = useRef(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -139,6 +140,7 @@ export function App() {
     setGameReport(undefined);
     setProfileReport(undefined);
     setReportError('');
+    setReportsUnavailable(false);
     setSolutionIndex(0);
     setAutoReportSessionId('');
     setSavingLocalSessionId('');
@@ -169,6 +171,20 @@ export function App() {
   }
 
   async function move(uciMove: string) {
+    if (moveSubmitting.current) {
+      setNotice('Move is being scored. Wait for the defender reply.');
+      return false;
+    }
+    moveSubmitting.current = true;
+    try {
+      return await moveInner(uciMove);
+    } finally {
+      moveSubmitting.current = false;
+    }
+    // FIXED: rapid click/drop events could submit the same move twice before the server defender reply returned.
+  }
+
+  async function moveInner(uciMove: string) {
     setHint(undefined);
     setGameReport(undefined);
     setProfileReport(undefined);
@@ -346,10 +362,12 @@ export function App() {
     }
     setReportLoading('session');
     setReportError('');
+    setReportsUnavailable(false);
     setProfileReport(undefined);
     try {
       const response = await api.report(reportSession.id, refresh);
       setGameReport(response);
+      setReportsUnavailable(false);
       setNotice('Performance report ready.');
     } catch (error) {
       handleReportError(error);
@@ -365,10 +383,12 @@ export function App() {
     }
     setReportLoading('profile');
     setReportError('');
+    setReportsUnavailable(false);
     setGameReport(undefined);
     try {
       const response = await api.profileReport(refresh);
       setProfileReport(response);
+      setReportsUnavailable(false);
       setNotice('Player profile ready.');
     } catch (error) {
       handleReportError(error);
@@ -397,6 +417,7 @@ export function App() {
     setGameReport(undefined);
     setProfileReport(undefined);
     setReportError('');
+    setReportsUnavailable(false);
     setSolutionIndex(0);
     setAutoReportSessionId('');
     setSavingLocalSessionId('');
