@@ -12,7 +12,7 @@ import { TournamentPage } from './TournamentPage';
 import { api, currentUser, onAuthExpired, token } from '../lib/api';
 import { boardStateLabel } from '../lib/chess';
 import { fallbackPuzzles } from '../lib/fallback';
-import type { AuthResponse, Difficulty, GameReportDto, HintResponse, MoveDto, PlayerProfileReportDto, PuzzleDto, SessionDto, SessionStatus, TimerMode, TrainingMode } from '../types/api';
+import type { AuthResponse, Difficulty, GameReportDto, HintResponse, MoveDto, PlayerProfileReportDto, PuzzleDto, ReviewMoveDto, SessionDto, SessionStatus, TimerMode, TrainingMode } from '../types/api';
 
 export function App() {
   const [dark, setDark] = useState(true);
@@ -29,6 +29,7 @@ export function App() {
   const [localFen, setLocalFen] = useState(fallbackPuzzles[0].fen);
   const [hint, setHint] = useState<HintResponse>();
   const [solution, setSolution] = useState<MoveDto[]>([]);
+  const [reviews, setReviews] = useState<ReviewMoveDto[]>([]);
   const [gameReport, setGameReport] = useState<GameReportDto>();
   const [profileReport, setProfileReport] = useState<PlayerProfileReportDto>();
   const [reportLoading, setReportLoading] = useState<'session' | 'profile'>();
@@ -64,6 +65,7 @@ export function App() {
     setSession(undefined);
     setHint(undefined);
     setSolution([]);
+    setReviews([]);
     setGameReport(undefined);
     setProfileReport(undefined);
     setReportError('');
@@ -125,9 +127,32 @@ export function App() {
 
   const fen = session?.currentFen ?? (mode === 'CUSTOM' && customFen ? customFen : localFen);
   const state = boardStateLabel(session);
-  const solutionMove = solution[solutionIndex];
-  const analysisArrows = solution.slice(solutionIndex, solutionIndex + 2);
-  const reviewMode = solution.length > 0;
+  const reviewItem = reviews[solutionIndex];
+  const solutionMove = reviewItem
+    ? {
+        ply: reviewItem.ply,
+        uci: reviewItem.bestMove,
+        san: reviewItem.bestSan,
+        fenAfter: reviewItem.bestFenAfter,
+        engineMove: false,
+        optimal: reviewItem.optimal,
+        reason: reviewItem.comment,
+      }
+    : solution[solutionIndex];
+  const playedReviewMove = reviewItem && reviewItem.playedMove
+    ? {
+        ply: reviewItem.ply,
+        uci: reviewItem.playedMove,
+        san: reviewItem.playedSan,
+        fenAfter: reviewItem.fenBefore,
+        engineMove: false,
+        optimal: reviewItem.optimal,
+        reason: reviewItem.comment,
+      }
+    : undefined;
+  const reviewFen = reviewItem?.fenBefore ?? solutionMove?.fenAfter ?? fen;
+  const analysisArrows = reviewItem ? [playedReviewMove, solutionMove].filter(Boolean) as MoveDto[] : solution.slice(solutionIndex, solutionIndex + 2);
+  const reviewMode = solution.length > 0 || reviews.length > 0;
 
   async function start() {
     if (!token() || !user) {
@@ -137,6 +162,7 @@ export function App() {
     setBusy(true);
     setHint(undefined);
     setSolution([]);
+    setReviews([]);
     setGameReport(undefined);
     setProfileReport(undefined);
     setReportError('');
@@ -244,6 +270,7 @@ export function App() {
     };
     setHint(undefined);
     setSolution([]);
+    setReviews([]);
     setGameReport(undefined);
     setProfileReport(undefined);
     setReportError('');
@@ -342,9 +369,17 @@ export function App() {
       setNotice('Start a connected session before analysis.');
       return;
     }
+    let reviewSession = session;
+    if (session.id.startsWith('local-')) {
+      const saved = await saveLocalCompleted(session, false);
+      if (!saved || saved.id.startsWith('local-')) return;
+      reviewSession = saved;
+      // FIXED: review tried to analyze unsaved local session ids, so completed fallback games could not get move-by-move feedback.
+    }
     try {
-      const response = await api.solution(session.id);
+      const response = await api.solution(reviewSession.id);
       setSolution(response.line);
+      setReviews(response.reviews ?? []);
       setSolutionIndex(0);
       setNotice(response.summary);
     } catch (error) {
@@ -414,6 +449,7 @@ export function App() {
     setDisplaySeconds(timerMode === 'NONE' ? 0 : timeLimit);
     setHint(undefined);
     setSolution([]);
+    setReviews([]);
     setGameReport(undefined);
     setProfileReport(undefined);
     setReportError('');
@@ -604,10 +640,10 @@ export function App() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {solution.length > 0 && (
+              {reviewMode && (
                 <div className="flex items-center gap-2">
                   <button type="button" className="rounded-tool border border-black/10 bg-white/70 px-3 py-2 text-sm font-semibold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember" onClick={() => setSolutionIndex(Math.max(0, solutionIndex - 1))}>Prev</button>
-                  <button type="button" className="rounded-tool border border-black/10 bg-white/70 px-3 py-2 text-sm font-semibold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember" onClick={() => setSolutionIndex(Math.min(solution.length - 1, solutionIndex + 1))}>Next</button>
+                  <button type="button" className="rounded-tool border border-black/10 bg-white/70 px-3 py-2 text-sm font-semibold transition hover:border-copper hover:text-copper dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember" onClick={() => setSolutionIndex(Math.min(Math.max(solution.length, reviews.length) - 1, solutionIndex + 1))}>Next</button>
                 </div>
               )}
               {accountChip()}
@@ -617,7 +653,7 @@ export function App() {
           </div>
 
           <StatStrip session={session ? { ...session, remainingSeconds: displaySeconds } : undefined} />
-          <TrainingBoard fen={solutionMove?.fenAfter ?? fen} session={session} hint={hint} solutionMove={solutionMove} analysisMoves={analysisArrows} reviewMode={reviewMode} onMove={move} />
+          <TrainingBoard fen={reviewFen} session={session} hint={hint} solutionMove={solutionMove} analysisMoves={analysisArrows} reviewMode={reviewMode} onMove={move} />
         </section>
 
         <AnimatePresence mode="wait">
@@ -635,6 +671,8 @@ export function App() {
               reportLoading={reportLoading}
               reportError={reportError}
               reportsUnavailable={reportsUnavailable}
+              reviews={reviews}
+              reviewIndex={solutionIndex}
               busy={busy}
               customFen={customFen}
               onMode={setMode}
@@ -647,6 +685,7 @@ export function App() {
               onHint={requestHint}
               onUndo={undo}
               onAnalyze={analyze}
+              onReviewIndex={setSolutionIndex}
               onReport={requestReport}
               onProfileReport={requestProfileReport}
             />

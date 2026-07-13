@@ -71,7 +71,8 @@ export function TrainingBoard({ fen, session, hint, solutionMove, analysisMoves 
           customLightSquareStyle={{ backgroundColor: '#ead8b7' }}
           customSquareStyles={customSquareStyles}
           customArrows={arrows}
-          arePremovesAllowed={false}
+          arePremovesAllowed
+          // FIXED: premoves were disabled on the board, so users could not queue intended moves while waiting for review/defender animations.
           animationDuration={180}
           onPieceDrop={(from, to) => {
             if (!canMove) return false;

@@ -108,7 +108,20 @@ public final class TrainingDtos {
     ) {
     }
 
-    public record SolutionResponse(List<MoveDto> line, String summary) {
+    public record ReviewMoveDto(
+        int ply,
+        String fenBefore,
+        String playedMove,
+        String playedSan,
+        String bestMove,
+        String bestSan,
+        String bestFenAfter,
+        boolean optimal,
+        String comment
+    ) {
+    }
+
+    public record SolutionResponse(List<MoveDto> line, String summary, List<ReviewMoveDto> reviews) {
     }
 
     public record LeaderboardEntry(String username, TrainingMode mode, Difficulty difficulty, int seconds, double accuracy) {

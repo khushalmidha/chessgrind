@@ -3,7 +3,7 @@ import { IconButton } from './IconButton';
 import { MoveList } from './MoveList';
 import { ReportPanel } from './ReportPanel';
 import { difficultyLabels, modeLabels } from '../lib/fallback';
-import type { Difficulty, GameReportDto, HintResponse, PlayerProfileReportDto, PuzzleDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
+import type { Difficulty, GameReportDto, HintResponse, PlayerProfileReportDto, PuzzleDto, ReviewMoveDto, SessionDto, TimerMode, TrainingMode } from '../types/api';
 
 interface Props {
   puzzles: PuzzleDto[];
@@ -18,6 +18,8 @@ interface Props {
   reportLoading?: 'session' | 'profile';
   reportError?: string;
   reportsUnavailable?: boolean;
+  reviews?: ReviewMoveDto[];
+  reviewIndex?: number;
   busy: boolean;
   customFen: string;
   onMode: (mode: TrainingMode) => void;
@@ -30,6 +32,7 @@ interface Props {
   onHint: () => void;
   onUndo: () => void;
   onAnalyze: () => void;
+  onReviewIndex?: (index: number) => void;
   onReport: (refresh?: boolean) => void;
   onProfileReport: (refresh?: boolean) => void;
 }
@@ -153,6 +156,37 @@ export function ControlPanel(props: Props) {
         Move history
       </div>
       <MoveList moves={props.session?.moves ?? []} />
+
+      {props.reviews && props.reviews.length > 0 && (
+        <div className="grid gap-2 rounded-forge border border-copper/25 bg-copper/5 p-3 dark:border-ember/25 dark:bg-ember/10">
+          <div className="flex items-center justify-between gap-2">
+            <div className="font-display text-sm font-bold">Move-by-move review</div>
+            <div className="text-xs font-semibold text-black/55 dark:text-white/55">{(props.reviewIndex ?? 0) + 1}/{props.reviews.length}</div>
+          </div>
+          <div className="grid max-h-56 gap-2 overflow-auto pr-1">
+            {props.reviews.map((review, index) => (
+              <button
+                key={`${review.ply}-${review.bestMove}-${index}`}
+                type="button"
+                onClick={() => props.onReviewIndex?.(index)}
+                className={`rounded-tool border p-2 text-left text-sm transition ${props.reviewIndex === index ? 'border-copper bg-white/80 shadow-forge dark:border-ember dark:bg-white/10' : 'border-black/10 bg-white/50 hover:border-copper dark:border-white/10 dark:bg-white/5 dark:hover:border-ember'}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-display font-bold">Ply {review.ply}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${review.optimal ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : 'bg-ember/15 text-copper dark:text-ember'}`}>
+                    {review.optimal ? 'Good' : 'Learn'}
+                  </span>
+                </div>
+                <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
+                  <span>Played: <strong>{review.playedSan || review.playedMove || '-'}</strong></span>
+                  <span>Best: <strong>{review.bestSan || review.bestMove}</strong></span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-black/60 dark:text-white/60">{review.comment}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <ReportPanel
         gameReport={props.gameReport}

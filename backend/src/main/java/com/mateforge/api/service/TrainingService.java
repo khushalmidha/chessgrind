@@ -6,6 +6,7 @@ import com.mateforge.api.dto.TrainingDtos.HintResponse;
 import com.mateforge.api.dto.TrainingDtos.ImportMoveDto;
 import com.mateforge.api.dto.TrainingDtos.ImportSessionRequest;
 import com.mateforge.api.dto.TrainingDtos.MoveResponse;
+import com.mateforge.api.dto.TrainingDtos.ReviewMoveDto;
 import com.mateforge.api.dto.TrainingDtos.SessionDto;
 import com.mateforge.api.dto.TrainingDtos.SolutionResponse;
 import com.mateforge.api.dto.TrainingDtos.StartSessionRequest;
@@ -222,19 +223,52 @@ public class TrainingService {
     @Transactional(readOnly = true)
     public SolutionResponse solution(UUID sessionId, UserPrincipal principal) {
         TrainingSession session = ownedSession(sessionId, principal);
-        List<EngineService.EngineMove> engineLine = engine.solutionLine(session.getStartFen(), 40);
+        List<TrainingMove> playedMoves = moves.findBySessionOrderByPlyAsc(session);
         String fen = session.getStartFen();
         List<com.mateforge.api.dto.TrainingDtos.MoveDto> line = new java.util.ArrayList<>();
-        int ply = 1;
-        for (EngineService.EngineMove best : engineLine) {
+        List<ReviewMoveDto> reviews = new java.util.ArrayList<>();
+        for (TrainingMove played : playedMoves) {
+            if (!played.isEngineMove()) {
+                EngineService.EngineMove best = engine.bestMove(fen);
+                Board board = rules.board(fen);
+                Move bestMove = rules.requireLegal(board, best.uci());
+                String bestSan = rules.simpleSan(bestMove, board);
+                board.doMove(bestMove);
+                String bestFenAfter = board.getFen();
+                boolean optimal = played.getUci().equals(best.uci()) || played.isOptimal();
+                String comment = optimal
+                    ? "Good: your move matches the engine plan from this exact position."
+                    : "Learn this moment: " + bestSan + " was the engine's best move from this exact position. " + best.reason();
+                reviews.add(new ReviewMoveDto(played.getPly(), fen, played.getUci(), played.getSan(),
+                    best.uci(), bestSan, bestFenAfter, optimal, comment));
+                line.add(new com.mateforge.api.dto.TrainingDtos.MoveDto(played.getPly(), best.uci(), bestSan,
+                    bestFenAfter, false, optimal, comment));
+            }
+            fen = played.getFenAfter();
+        }
+        if (reviews.isEmpty()) {
+            EngineService.EngineMove best = engine.bestMove(session.getCurrentFen());
+            Board board = rules.board(session.getCurrentFen());
+            Move bestMove = rules.requireLegal(board, best.uci());
+            String bestSan = rules.simpleSan(bestMove, board);
+            board.doMove(bestMove);
+            String bestFenAfter = board.getFen();
+            reviews.add(new ReviewMoveDto(1, session.getCurrentFen(), "", "", best.uci(), bestSan, bestFenAfter, false,
+                "Start here: " + bestSan + " is the best move in the current position."));
+            line.add(new com.mateforge.api.dto.TrainingDtos.MoveDto(1, best.uci(), bestSan, bestFenAfter, false, true, best.reason()));
+        }
+        int continuationPly = playedMoves.isEmpty() ? 2 : playedMoves.getLast().getPly() + 1;
+        for (EngineService.EngineMove best : engine.solutionLine(fen, 12)) {
             Board board = rules.board(fen);
             Move move = rules.requireLegal(board, best.uci());
             String san = rules.simpleSan(move, board);
             board.doMove(move);
             fen = board.getFen();
-            line.add(new com.mateforge.api.dto.TrainingDtos.MoveDto(ply++, best.uci(), san, fen, ply % 2 == 1, true, best.reason()));
+            line.add(new com.mateforge.api.dto.TrainingDtos.MoveDto(continuationPly, best.uci(), san, fen, continuationPly % 2 == 0, true, best.reason()));
+            continuationPly++;
         }
-        return new SolutionResponse(line, "Optimal line generated from the starting position using the configured UCI engine.");
+        return new SolutionResponse(line, "Review generated for each move you played, plus a short best continuation from the final position.", reviews);
+        // FIXED: analysis used to show only the shortest line from the start instead of reviewing the user's actual moves.
     }
 
     @Transactional

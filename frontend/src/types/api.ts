@@ -97,6 +97,19 @@ export interface HintResponse {
 export interface SolutionResponse {
   line: MoveDto[];
   summary: string;
+  reviews: ReviewMoveDto[];
+}
+
+export interface ReviewMoveDto {
+  ply: number;
+  fenBefore: string;
+  playedMove: string;
+  playedSan: string;
+  bestMove: string;
+  bestSan: string;
+  bestFenAfter: string;
+  optimal: boolean;
+  comment: string;
 }
 
 export interface MoveHighlightDto {
