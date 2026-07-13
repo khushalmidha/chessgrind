@@ -1,18 +1,20 @@
-import { Play, RefreshCw, Trophy, UserRound } from 'lucide-react';
+import { Eye, Play, RefreshCw, Trophy, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ReportPanel } from '../components/ReportPanel';
 import { api, currentUser, HttpError } from '../lib/api';
 import { difficultyLabels, modeLabels } from '../lib/fallback';
-import type { FavoriteDto, PlayerProfileReportDto, ProfileDto, TrainingMode } from '../types/api';
+import type { FavoriteDto, PlayerProfileReportDto, ProfileDto, SessionDto, TrainingMode } from '../types/api';
 
 interface Props {
   onNotice: (message: string) => void;
   onPlay: () => void;
+  onReviewSession: (session: SessionDto) => void;
 }
 
-export function Profile({ onNotice, onPlay }: Props) {
+export function Profile({ onNotice, onPlay, onReviewSession }: Props) {
   const [profile, setProfile] = useState<ProfileDto>();
   const [favorites, setFavorites] = useState<FavoriteDto[]>([]);
+  const [sessions, setSessions] = useState<SessionDto[]>([]);
   const [profileReport, setProfileReport] = useState<PlayerProfileReportDto>();
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
@@ -25,8 +27,9 @@ export function Profile({ onNotice, onPlay }: Props) {
     setError('');
     setProfile(undefined);
     setFavorites([]);
-    Promise.allSettled([api.profile(), api.favorites()])
-      .then(([profileResult, favoritesResult]) => {
+    setSessions([]);
+    Promise.allSettled([api.profile(), api.favorites(), api.sessions()])
+      .then(([profileResult, favoritesResult, sessionsResult]) => {
         if (!active) return;
         if (profileResult.status === 'fulfilled') {
           setProfile(profileResult.value);
@@ -48,6 +51,11 @@ export function Profile({ onNotice, onPlay }: Props) {
           setFavorites(favoritesResult.value);
         } else {
           console.error('Favorites fetch failed:', favoritesResult.reason);
+        }
+        if (sessionsResult.status === 'fulfilled') {
+          setSessions(sessionsResult.value);
+        } else {
+          console.error('Sessions fetch failed:', sessionsResult.reason);
         }
       })
       .finally(() => {
@@ -184,6 +192,49 @@ export function Profile({ onNotice, onPlay }: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="mf-panel overflow-hidden rounded-forge">
+            <div className="flex items-center justify-between gap-3 p-4">
+              <h2 className="font-bold">Recent Games</h2>
+              <span className="text-xs text-black/45 dark:text-white/45">{sessions.length} loaded</span>
+            </div>
+            {sessions.length === 0 ? (
+              <div className="px-4 pb-4 text-sm text-black/55 dark:text-white/55">No saved games yet. Complete a session and it will appear here.</div>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead className="bg-copper/10 text-xs uppercase text-black/55 dark:bg-ember/10 dark:text-white/60">
+                  <tr>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Mode</th>
+                    <th className="p-3">Result</th>
+                    <th className="p-3">Accuracy</th>
+                    <th className="p-3">Review</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                  {sessions.map((session) => (
+                    <tr key={session.id}>
+                      <td className="p-3">{formatDate(session.startedAt)}</td>
+                      <td className="p-3 font-semibold">{modeLabels[session.mode]}</td>
+                      <td className="p-3">{session.status}</td>
+                      <td className="p-3">{session.accuracy.toFixed(1)}%</td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          disabled={session.status === 'ACTIVE'}
+                          onClick={() => onReviewSession(session)}
+                          className="inline-flex items-center gap-2 rounded-tool border border-black/10 bg-white/60 px-3 py-1.5 text-xs font-bold transition hover:border-copper hover:text-copper disabled:opacity-50 dark:border-white/10 dark:bg-white/10 dark:hover:border-ember dark:hover:text-ember"
+                        >
+                          <Eye size={14} />
+                          Review
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

@@ -38,6 +38,7 @@ export function App() {
   const [solutionIndex, setSolutionIndex] = useState(0);
   const [autoReportSessionId, setAutoReportSessionId] = useState('');
   const [savingLocalSessionId, setSavingLocalSessionId] = useState('');
+  const [pendingReviewSessionId, setPendingReviewSessionId] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Ready for a clean mate.');
   const moveSubmitting = useRef(false);
@@ -114,6 +115,13 @@ export function App() {
     void saveLocalCompleted(session, true);
     // FIXED: completed fallback games are now saved to the user's profile instead of remaining local-only.
   }, [savingLocalSessionId, session?.id, session?.status, user]);
+
+  useEffect(() => {
+    if (!pendingReviewSessionId || session?.id !== pendingReviewSessionId) return;
+    setPendingReviewSessionId('');
+    void analyze();
+    // FIXED: profile could show aggregate stats but had no path to open a saved game's review.
+  }, [pendingReviewSessionId, session?.id]);
 
   const selectedPuzzle = useMemo(() => {
     if (mode === 'RANDOM') {
@@ -513,6 +521,23 @@ export function App() {
     setNotice('Choose your endgame type, then press Start to begin.');
   }
 
+  function reviewFromProfile(reviewSession: SessionDto) {
+    setSession(reviewSession);
+    setLocalFen(reviewSession.currentFen);
+    setDisplaySeconds(reviewSession.remainingSeconds);
+    setHint(undefined);
+    setSolution([]);
+    setReviews([]);
+    setGameReport(undefined);
+    setProfileReport(undefined);
+    setReportError('');
+    setReportsUnavailable(false);
+    setSolutionIndex(0);
+    setPendingReviewSessionId(reviewSession.id);
+    navigate('train');
+    setNotice('Opening saved game review.');
+  }
+
   function accountChip() {
     if (!user) {
       return (
@@ -584,7 +609,7 @@ export function App() {
               <AuthPanel user={user} onUser={setUser} onNotice={setNotice} />
             </div>
           ) : (
-            <Profile onNotice={setNotice} onPlay={playFromProfile} />
+            <Profile onNotice={setNotice} onPlay={playFromProfile} onReviewSession={reviewFromProfile} />
           )}
         </div>
       </main>

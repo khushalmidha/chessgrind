@@ -115,6 +115,7 @@ export const api = {
     request<SessionDto>('/api/sessions', { method: 'POST', body: JSON.stringify(payload) }),
   importSession: (payload: ImportSessionRequest) =>
     request<SessionDto>('/api/sessions/import', { method: 'POST', body: JSON.stringify(payload) }),
+  sessions: () => request<SessionDto[]>('/api/sessions'),
   move: (sessionId: string, uci: string) =>
     request<MoveResponse>(`/api/sessions/${sessionId}/moves`, { method: 'POST', body: JSON.stringify({ uci }) }),
   hint: (sessionId: string) => request<HintResponse>(`/api/sessions/${sessionId}/hint`, { method: 'POST' }),
